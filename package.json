@@ -1,6 +1,7 @@
 {
   "name": "vite-plugin-bem-modules",
   "version": "0.1.0",
+  "private": true,
   "description": "A Vite plugin that turns CSS Module class relationships into a typed BEM API.",
   "type": "module",
   "main": "./dist/index.js",

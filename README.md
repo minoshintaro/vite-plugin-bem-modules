@@ -41,7 +41,7 @@ package rootは次のAPIを公開します。
 | default export `bemModules` | Viteへ登録するプラグインfactory |
 | `defineBemModulesConfig` | Vite configとCLIで同じ設定objectを共有するidentity helper |
 | `isBemGlobalClassName` | global classの一致判定を共有するhelper |
-| `BemGlobalScopeOptions`、`BemModulesOptions`、`BemNamingOptions`、`BemOutputSeparator`、`BemProjectOptions`、`ModifierOutput`、`WordCase` | `naming`、`globalScope`、`modifierOutput`、`types`、`project`の設定 |
+| `BemGlobalScopeOptions`、`BemModulesOptions`、`BemNamingOptions`、`BemOutputSeparator`、`BemProjectOptions`、`BemProjectStartup`、`ModifierOutput`、`WordCase` | `naming`、`globalScope`、`modifierOutput`、`types`、`project`の設定 |
 
 CSS Moduleのclass key型は、対象ファイルの隣に生成される`.d.ts`から利用します。
 
@@ -339,6 +339,18 @@ bemModules({
 ```
 
 Project scopeにあるCSS ModuleはimportされていなくてもBlock名・生成class名の一意性検査に含まれます。これにより検査結果がentryやmodule graphで変わりません。
+
+Vite起動時の全体走査を別の工程へ委ねる統合では、`project.startup: "defer"`を指定できます。この設定は`buildStart`でのProject全体の検査・型同期だけを延期し、Viteから到達したCSS Moduleの変換、HMR、増分一意性検査は維持します。既定の`"scan"`は起動時に明示scope全体を検査・同期します。
+
+```ts
+bemModules({
+  project: {
+    startup: "defer",
+  },
+});
+```
+
+`bem-modules check`と`bem-modules sync`は明示的なCLI操作なので、`project.startup`に関係なくscope全体を処理します。通常のアプリケーションでは既定の`"scan"`を使用し、`"defer"`は別工程が全体検査を所有する統合でだけ使用してください。
 
 ### CLIで検査・同期する
 

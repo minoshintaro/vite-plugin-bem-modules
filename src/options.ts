@@ -3,6 +3,7 @@ import { createBemDiagnosticError } from "./diagnostics.js";
 import type {
   BemModulesOptions,
   BemProjectOptions,
+  BemProjectStartup,
   BemOutputSeparator,
   ModifierOutput,
   ResolvedBemModulesOptions,
@@ -17,6 +18,7 @@ const DEFAULT_NAMING: ResolvedBemNamingOptions = {
 
 const BEM_SEPARATORS = new Set<BemOutputSeparator>(["-", "--", "_", "__"]);
 const MODIFIER_OUTPUTS = new Set<ModifierOutput>(["only", "withBase"]);
+const PROJECT_STARTUPS = new Set<BemProjectStartup>(["scan", "defer"]);
 
 function normalizeProjectPath(value: string): string {
   return path.posix.normalize(value.replaceAll("\\", "/")).replace(/^\.\//, "").replace(/\/$/, "");
@@ -35,6 +37,13 @@ function validateProjectPaths(
   }
 
   const configured = project as BemProjectOptions;
+  if (configured.startup !== undefined && !PROJECT_STARTUPS.has(configured.startup)) {
+    throw createBemDiagnosticError(
+      "BEM004",
+      'project.startup must be "scan" or "defer".',
+      { details: [`received: ${JSON.stringify(configured.startup)}`] },
+    );
+  }
   for (const [kind, values] of [
     ["include", configured.include],
     ["exclude", configured.exclude],
@@ -180,6 +189,7 @@ export function resolveOptions(options: BemModulesOptions = {}): ResolvedBemModu
     project: {
       include: include.map((value) => normalizeProjectPath(value.trim())),
       exclude: exclude.map((value) => normalizeProjectPath(value.trim())),
+      startup: project.startup ?? "scan",
     },
   };
 }

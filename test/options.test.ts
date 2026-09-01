@@ -54,10 +54,11 @@ test("modifierOutputはonlyまたはwithBaseに限定し、既定値はonlyと�
 });
 
 test("Projectのinclude/excludeはpath集合として正規化し、include未指定はroot全体を表す", () => {
-  assert.deepEqual(resolveOptions().project, { include: ["."], exclude: [] });
+  assert.deepEqual(resolveOptions().project, { include: ["."], exclude: [], startup: "scan" });
   assert.deepEqual(resolveOptions({ project: { include: ["./src", "packages/ui/"], exclude: ["./fixtures"] } }).project, {
     include: ["src", "packages/ui"],
     exclude: ["fixtures"],
+    startup: "scan",
   });
   assert.deepEqual(resolveOptions({ project: { include: [] } }).project.include, []);
   assert.deepEqual(resolveOptions({ project: { include: ["/tmp/shared"] } }).project.include, ["/tmp/shared"]);
@@ -68,6 +69,14 @@ test("Projectのinclude/excludeはpath集合として正規化し、include未�
       value,
     );
   }
+});
+
+test("project.startupは全体走査または到達Moduleへの延期を選ぶ", () => {
+  assert.equal(resolveOptions({ project: { startup: "defer" } }).project.startup, "defer");
+  assert.throws(
+    () => resolveOptions({ project: { startup: "invalid" as never } }),
+    /project\.startup must be "scan" or "defer"/,
+  );
 });
 
 test("resolved optionsはCompiler設定と明示的なProject範囲を持つ", () => {

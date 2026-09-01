@@ -1538,7 +1538,7 @@ test("Project scope内の重複Block名をbuildで拒否する", async () => {
   try {
     await fs.writeFile(path.join(root, "A.module.css"), "/* @block card */ .root {}", "utf8");
     await fs.writeFile(path.join(root, "B.module.css"), "/* @block card */ .root {}", "utf8");
-    await fs.writeFile(path.join(root, "main.ts"), "import './A.module.css'; import './B.module.css';", "utf8");
+    await fs.writeFile(path.join(root, "main.ts"), "import './A.module.css';", "utf8");
 
     await assert.rejects(
       () => build({
@@ -1554,6 +1554,34 @@ test("Project scope内の重複Block名をbuildで拒否する", async () => {
       }),
       /Block names must be unique across CSS Modules/,
     );
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("project.startup: deferは起動時の全体走査を延期し、到達Moduleを変換する", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-deferred-project-"));
+  try {
+    await fs.writeFile(path.join(root, "A.module.css"), "/* @block card */ .root {}", "utf8");
+    await fs.writeFile(path.join(root, "B.module.css"), "/* @block card */ .root {}", "utf8");
+    await fs.writeFile(
+      path.join(root, "main.ts"),
+      "import styles from './A.module.css'; export const className = styles.root;",
+      "utf8",
+    );
+
+    await assert.doesNotReject(() => build({
+      root,
+      configFile: false,
+      logLevel: "silent",
+      plugins: [testBemModules({ types: false, project: { startup: "defer" } })],
+      build: {
+        outDir: "dist",
+        emptyOutDir: true,
+        minify: false,
+        lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
+      },
+    }));
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

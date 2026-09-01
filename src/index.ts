@@ -87,6 +87,7 @@ export type {
   BemGlobalScopeOptions,
   BemModulesOptions,
   BemProjectOptions,
+  BemProjectStartup,
   ModifierOutput,
   BemNamingOptions,
   BemOutputSeparator,

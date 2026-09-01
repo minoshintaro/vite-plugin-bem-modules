@@ -274,6 +274,7 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
 
     async handleBuildStart() {
       if (!resolvedConfig || !this.isActive() || !project) return;
+      if (resolvedOptions.project.startup === "defer") return;
       project.setDtsMode(dtsModeFor(resolvedOptions, command));
       if (dtsModeFor(resolvedOptions, command) === "ignore") await project.check();
       else await project.sync();

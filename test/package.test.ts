@@ -17,10 +17,11 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 test("package rootはfactory・共有判定・設定用型を公開し、source mapの参照元を配布する", async () => {
   const packageJson = JSON.parse(
     await fs.readFile(new URL("../package.json", import.meta.url), "utf8"),
-  ) as { files?: string[]; main?: string; types?: string; bin?: Record<string, string>; scripts?: Record<string, string> };
+  ) as { files?: string[]; main?: string; types?: string; private?: boolean; bin?: Record<string, string>; scripts?: Record<string, string> };
   assert.deepEqual(packageJson.files, ["CHANGELOG.md", "dist", "src"]);
   assert.equal(packageJson.main, "./dist/index.js");
   assert.equal(packageJson.types, "./dist/index.d.ts");
+  assert.equal(packageJson.private, true);
   assert.equal(packageJson.scripts?.["pack:tgz"], "pnpm pack --pack-destination .");
   assert.equal(packageJson.bin?.["bem-modules"], "./dist/cli.js");
 
@@ -37,6 +38,7 @@ test("package rootはfactory・共有判定・設定用型を公開し、source 
     "BemNamingOptions",
     "BemOutputSeparator",
     "BemProjectOptions",
+    "BemProjectStartup",
     "ModifierOutput",
     "WordCase",
   ]) {

@@ -1,6 +1,7 @@
 export type WordCase = "kebab" | "camel";
 export type BemOutputSeparator = "-" | "--" | "_" | "__";
 export type ModifierOutput = "only" | "withBase";
+export type BemProjectStartup = "scan" | "defer";
 
 export type BemNamingOptions = {
   /** The spelling used for local CSS class names. */
@@ -28,6 +29,8 @@ export type BemProjectOptions = {
   include?: readonly string[];
   /** Root-relative or absolute files/directories excluded from the project scope. */
   exclude?: readonly string[];
+  /** Whether Vite startup scans the complete project scope or defers to reached modules. */
+  startup?: BemProjectStartup;
 };
 
 export type BemGlobalScopeOptions = {
@@ -55,6 +58,7 @@ export type ResolvedBemModulesOptions = ResolvedBemCompilerOptions & {
   project: {
     include: readonly string[];
     exclude: readonly string[];
+    startup: BemProjectStartup;
   };
 };
 

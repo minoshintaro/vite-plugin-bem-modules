@@ -35,7 +35,7 @@ flowchart TD
 | Modifier export | Modifierだけ、またはBase併記の値を返す | `modifierOutput: "only"`／`"withBase"` |
 | Global class | BEM分類しないclassを元の名前で維持する | `globalScope.exact`／`prefix`、明示的`:global` |
 | Compiler | 一つのsourceからschemaとlowered sourceを副作用なく作る | `ResolvedBemCompilerOptions` |
-| Project | 明示されたsource集合のBlock名・生成class名を検査する | `project.include`／`project.exclude` |
+| Project | 明示されたsource集合のBlock名・生成class名を検査する | `project.include`／`project.exclude`／`project.startup` |
 | 型生成 | schemaの公開keyを隣接`.d.ts`へ出力する | `types`、`bem-modules sync` |
 | export検証 | Vite最終出力の欠落・不一致・未知の追加exportを検出する | `BEM009`、`getJSON` observer |
 | Vite委譲 | Sass、PostCSS、CSS Modules、CSS asset bundlingをViteへ任せる | Vite adapterとしてのみ利用 |
@@ -47,7 +47,7 @@ packageは一つのまま、rootから次を公開します。
 - default export `bemModules`: Viteへ登録するplugin factory
 - `defineBemModulesConfig`: Vite configとCLIで同じ設定objectを共有するidentity helper
 - `isBemGlobalClassName`: global classの一致判定
-- `BemModulesOptions`、`BemProjectOptions`、`BemNamingOptions`、`BemGlobalScopeOptions`、`BemOutputSeparator`、`ModifierOutput`、`WordCase`
+- `BemModulesOptions`、`BemProjectOptions`、`BemProjectStartup`、`BemNamingOptions`、`BemGlobalScopeOptions`、`BemOutputSeparator`、`ModifierOutput`、`WordCase`
 
 `BemModuleSchema`とCompiler / Projectの低レベル実装は、実consumerが生まれるまでpackage rootの公開契約に含めません。内部では耐久境界として個別にテストします。
 
@@ -116,6 +116,8 @@ Vite adapterの責務は次の範囲です。
 - CSS Module自身の変更時に再compileし、schema projectionが変わったときだけ必要なscript importerをinvalidateする。
 
 `@block`のないCSS Module、virtual module、`node_modules`配下、通常CSS Moduleへの`?raw` / `?inline` / `?url`はVite標準処理へ委譲します。BEM対象に同じqueryが付いた場合は`BEM008`で拒否します。`css.modules: false`では変換・query検査・Projectの検査と型同期を無効にし、Vite自身の制約をそのまま適用します。有効時の`css.transformer: "lightningcss"`は`BEM004`で拒否します。
+
+`project.startup`の既定値`"scan"`では、Viteの`buildStart`で明示scope全体をcheckまたはsyncします。`"defer"`ではこの起動時操作だけを行わず、到達したModuleのtransform・HMR・Project増分更新は維持します。CLIの`check` / `sync`は明示操作なので、このVite起動設定には従いません。
 
 Viteの標準graph処理を優先し、HMRは正当性を保つ最小限の処理に留めます。importerが変更されただけでProject stateや生成`.d.ts`を変えません。CSSの再解析・同期に失敗した場合は旧schemaとplugin-owned生成物を残さず、エラーを再throwします。
 
