@@ -1,0 +1,70 @@
+{
+  "name": "vite-plugin-bem-modules",
+  "version": "0.1.0",
+  "description": "A Vite plugin that turns CSS Module class relationships into a typed BEM API.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "bem-modules": "./dist/cli.js"
+  },
+  "author": "minoshintaro",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/minoshintaro/vite-plugin-bem-modules.git"
+  },
+  "homepage": "https://github.com/minoshintaro/vite-plugin-bem-modules#readme",
+  "bugs": {
+    "url": "https://github.com/minoshintaro/vite-plugin-bem-modules/issues"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "CHANGELOG.md",
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typegen": "vite build --config examples/typegen/vite.config.mjs",
+    "typecheck:example": "tsc -p examples/typegen/tsconfig.json --noEmit",
+    "check:typegen": "pnpm run typegen && pnpm run typecheck:example && node scripts/check-generated-types.mjs",
+    "test": "pnpm run build && node scripts/run-tests.mjs",
+    "pack:tgz": "pnpm pack --pack-destination .",
+    "prepack": "tsc -p tsconfig.json",
+    "prepublishOnly": "pnpm test"
+  },
+  "keywords": [
+    "vite",
+    "vite-plugin",
+    "css-modules",
+    "bem",
+    "typescript"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "vite": "^8.0.0"
+  },
+  "engines": {
+    "node": "^22.13.0 || >=24.0.0"
+  },
+  "packageManager": "pnpm@11.9.0",
+  "dependencies": {
+    "postcss": "^8.5.26",
+    "postcss-scss": "^4.0.9",
+    "postcss-selector-parser": "^7.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "sass-embedded": "^1.102.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.1"
+  }
+}

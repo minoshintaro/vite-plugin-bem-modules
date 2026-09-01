@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            node: 22.13.0
+            release: false
+          - os: ubuntu-latest
+            node: 24.x
+            release: true
+          - os: windows-latest
+            node: 24.x
+            release: false
+          - os: macos-latest
+            node: 24.x
+            release: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run typecheck
+        run: pnpm run typecheck
+
+      - name: Verify generated CSS declarations
+        if: matrix.release
+        run: pnpm run check:typegen
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Verify package contents
+        if: matrix.release
+        run: pnpm pack --dry-run

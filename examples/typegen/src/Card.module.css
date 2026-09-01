@@ -1,0 +1,9 @@
+/* @block p-card */
+
+.root {
+  display: flex;
+}
+
+.root--compact {
+  gap: 4px;
+}
