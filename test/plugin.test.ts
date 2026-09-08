@@ -725,7 +725,7 @@ test("CSS ModuleのkeyframesとICSS valueを含むBEM moduleをbuildできる", 
       root,
       configFile: false,
       logLevel: "silent",
-      plugins: [testBemModules({ types: false })],
+      plugins: [testBemModules({ types: true })],
       build: {
         outDir: "dist",
         emptyOutDir: true,
@@ -733,6 +733,10 @@ test("CSS ModuleのkeyframesとICSS valueを含むBEM moduleをbuildできる", 
         lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
       },
     });
+    const dts = await fs.readFile(path.join(root, "Card.module.css.d.ts"), "utf8");
+    assert.match(dts, /readonly "primary": string/);
+    assert.match(dts, /readonly "fade-in": string/);
+    assert.match(dts, /readonly "fadeIn": string/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -1499,13 +1503,13 @@ test("globalScope の class は CSS・実行時値・d.ts で元の名前を維�
 test("escapeを必要とするglobal classの同一性を最終CSS・export・型で維持する", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-escaped-global-"));
   try {
-    await fs.writeFile(path.join(root, "Card.module.css"), "/* @block p-card */ .root { color: red; } .foo\\.bar { padding: 11px; }", "utf8");
+    await fs.writeFile(path.join(root, "Card.module.css"), "/* @block p-card */ .root { color: red; } .foo\\.bar { padding: 11px; } .hover\\:bg { display: block; }", "utf8");
     await fs.writeFile(path.join(root, "main.ts"), "import styles from './Card.module.css'; export { styles };", "utf8");
     await build({
       root,
       configFile: false,
       logLevel: "silent",
-      plugins: [bemModules({ types: true, globalScope: { exact: ["foo.bar"] } })],
+      plugins: [bemModules({ types: true, globalScope: { exact: ["foo.bar"], prefix: ["hover:"] } })],
       build: {
         outDir: "dist",
         emptyOutDir: true,
@@ -1524,9 +1528,12 @@ test("escapeを必要とするglobal classの同一性を最終CSS・export・�
         selectors.walkClasses((node) => { names.push(node.value); });
       }).processSync(rule.selector);
     });
-    assert.deepEqual(names.sort(), ["foo.bar", "p-card"]);
+    assert.deepEqual(names.sort(), ["foo.bar", "hover:bg", "p-card"]);
     const built = await import(pathToFileURL(path.join(root, "dist", jsFile)).href);
     assert.equal(built.styles["foo.bar"], "foo.bar");
+    assert.equal(built.styles["hover:bg"], "hover:bg");
+    const dts = await fs.readFile(path.join(root, "Card.module.css.d.ts"), "utf8");
+    assert.match(dts, /readonly "hover:bg": string/);
     assert.match(await fs.readFile(path.join(root, "Card.module.css.d.ts"), "utf8"), /readonly "foo\.bar": string/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });

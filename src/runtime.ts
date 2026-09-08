@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import path from "node:path";
 import type {
   CSSModulesOptions,
   ConfigEnv,
@@ -6,10 +7,12 @@ import type {
   HotUpdateOptions,
   ResolvedConfig,
   UserConfig,
+  ViteDevServer,
 } from "vite";
 import { cssModuleOutputMismatchError, createBemDiagnosticError } from "./diagnostics.js";
 import { compileBemModule } from "./compiler.js";
 import { createBemProjectIndex, type BemProjectIndex, type ProjectDtsMode } from "./project.js";
+import { unescapeCssIdentifier } from "./schema.js";
 import type {
   BemModuleSchema,
   BemModulesOptions,
@@ -84,6 +87,7 @@ type BemRuntime = {
   options: ResolvedBemModulesOptions;
   configResolved(config: ResolvedConfig): void;
   config(config: UserConfig, _env: ConfigEnv): UserConfig;
+  configureServer(server: ViteDevServer): void;
   isActive(): boolean;
   isOwnedCssModule(filePath: string): Promise<boolean>;
   transformCss(filePath: string, source: string): Promise<string | null>;
@@ -110,7 +114,17 @@ function cssProjectionMatches(previous: BemModuleSchema, next: BemModuleSchema):
   const nextClassMap = Object.entries(next.classMap).sort(([left], [right]) => left.localeCompare(right));
   const previousExportMap = Object.entries(previous.exportMap).sort(([left], [right]) => left.localeCompare(right));
   const nextExportMap = Object.entries(next.exportMap).sort(([left], [right]) => left.localeCompare(right));
-  return JSON.stringify([previousClassMap, previousExportMap]) === JSON.stringify([nextClassMap, nextExportMap]);
+  const previousNonClassExports = [...previous.nonClassExportNames].sort();
+  const nextNonClassExports = [...next.nonClassExportNames].sort();
+  return JSON.stringify([
+    previousClassMap,
+    previousExportMap,
+    previousNonClassExports,
+  ]) === JSON.stringify([
+    nextClassMap,
+    nextExportMap,
+    nextNonClassExports,
+  ]);
 }
 
 function dtsModeFor(
@@ -140,6 +154,46 @@ async function isRegularFile(filePath: string): Promise<boolean> {
     if (code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR") return false;
     throw error;
   }
+}
+
+function isPathWithin(filePath: string, directory: string): boolean {
+  const relative = path.relative(directory, filePath);
+  return relative === ""
+    || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+
+function externalProjectIncludes(
+  root: string,
+  includes: readonly string[],
+): string[] {
+  const canonicalRoot = canonicalFilePath(root);
+  return [...new Set(includes
+    .map((include) => canonicalFilePath(path.resolve(root, include)))
+    .filter((include) => !isPathWithin(include, canonicalRoot)))];
+}
+
+function unescapeCssClassList(value: string): string {
+  return value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(unescapeCssIdentifier)
+    .join(" ");
+}
+
+function normalizeCssModulesJson(
+  json: Record<string, string>,
+  schema: BemModuleSchema,
+): void {
+  const normalized = Object.entries(json).map(([key, value]) => {
+    const unescapedKey = unescapeCssIdentifier(key);
+    const unescapedValue = Object.prototype.hasOwnProperty.call(schema.exportMap, unescapedKey)
+      ? unescapeCssClassList(value)
+      : value;
+    return [unescapedKey, unescapedValue] as const;
+  });
+  for (const key of Object.keys(json)) delete json[key];
+  for (const [key, value] of normalized) json[key] = value;
 }
 
 function mergeCssModulesObserver(
@@ -181,6 +235,7 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
     const schema = project?.getSchema(canonical) ?? externalSchemas.get(canonical);
     if (!schema) return;
 
+    normalizeCssModulesJson(json, schema);
     const expected = schema.exportMap;
     const missing = Object.keys(expected).filter((key) => json[key] !== expected[key]);
     const expectedValues = new Set([
@@ -252,6 +307,11 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
       command = env.command;
       project?.setDtsMode(dtsModeFor(resolvedOptions, command));
       return mergeCssModulesObserver(config, cssModulesObserverState);
+    },
+
+    configureServer(server) {
+      const includes = externalProjectIncludes(server.config.root, resolvedOptions.project.include);
+      if (includes.length > 0) server.watcher.add(includes);
     },
 
     isActive() {

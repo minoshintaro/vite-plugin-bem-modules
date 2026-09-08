@@ -43,7 +43,7 @@ package rootは次のAPIを公開します。
 | `isBemGlobalClassName` | global classの一致判定を共有するhelper |
 | `BemGlobalScopeOptions`、`BemModulesOptions`、`BemNamingOptions`、`BemOutputSeparator`、`BemProjectOptions`、`BemProjectStartup`、`ModifierOutput`、`WordCase` | `naming`、`globalScope`、`modifierOutput`、`types`、`project`の設定 |
 
-CSS Moduleのclass key型は、対象ファイルの隣に生成される`.d.ts`から利用します。
+CSS Moduleの公開key（class、`@value`、`@keyframes`）の型は、対象ファイルの隣に生成される`.d.ts`から利用します。
 
 ## Viteへの追加
 
@@ -254,9 +254,9 @@ export default defineConfig({
 
 ### 型宣言をコミットする
 
-`@block`を持つCSS Moduleには、serveまたは`types: true`のbuildで、class keyだけを持つ`Card.module.css.d.ts`を生成します。TypeScriptでは、定義したclass keyを補完でき、存在しないkeyを検出できます。
+`@block`を持つCSS Moduleには、serveまたは`types: true`のbuildで、実行時に公開されるclassと非class exportのkeyを持つ`Card.module.css.d.ts`を生成します。TypeScriptでは、定義したkeyを補完でき、存在しないkeyを検出できます。
 
-生成された`.d.ts`はCSS Moduleの隣に置かれます。このファイルはCSSから作られる派生ファイルですが、v0.1では利用者のプロジェクトでコミットする運用を推奨します。コミットしておけば、clone直後でもエディタと`tsc`がクラスキーの辞書を読めます。`.d.ts`は手編集せず、元のCSSを変更したときに再生成してください。
+生成された`.d.ts`はCSS Moduleの隣に置かれます。このファイルはCSSから作られる派生ファイルですが、v0.1では利用者のプロジェクトでコミットする運用を推奨します。コミットしておけば、clone直後でもエディタと`tsc`が公開キーの辞書を読めます。`.d.ts`は手編集せず、元のCSSを変更したときに再生成してください。
 
 型宣言の同期では、Viteを起動しない同梱CLIを主経路にします。ローカルとCIで同じProject scopeを全走査でき、entryやimport状態に結果が左右されません。
 

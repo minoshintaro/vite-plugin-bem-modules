@@ -11,7 +11,11 @@ function buildDts(schema: BemModuleSchema): string {
 
   lines.push("export type Styles = {");
 
-  for (const key of Object.keys(schema.classMap).sort()) {
+  const exportNames = new Set([
+    ...Object.keys(schema.classMap),
+    ...schema.nonClassExportNames,
+  ]);
+  for (const key of [...exportNames].sort()) {
     lines.push(`  readonly ${quote(key)}: string;`);
   }
 

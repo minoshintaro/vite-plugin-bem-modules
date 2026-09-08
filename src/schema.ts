@@ -251,6 +251,35 @@ function classSelector(value: string): SelectorNode {
   return node;
 }
 
+function escapeCssIdentifier(value: string): string {
+  return classSelector(value).toString().slice(1);
+}
+
+function escapeCssClassList(value: string): string {
+  return value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(escapeCssIdentifier)
+    .join(" ");
+}
+
+export function unescapeCssIdentifier(value: string): string {
+  if (!value.includes("\\")) return value;
+  let unescaped = value;
+  try {
+    selectorParser((selectors) => {
+      const selector = selectors.first;
+      const node = selector?.nodes[0];
+      if (selector?.nodes.length === 1 && node?.type === "class") unescaped = node.value;
+    }).processSync(`.${value}`);
+  } catch {
+    // Keep malformed external output intact so the normal export mismatch
+    // diagnostic remains the observable failure.
+  }
+  return unescaped;
+}
+
 function globalClassSelector(value: string): SelectorNode {
   return selectorParser.pseudo({
     value: ":global",
@@ -320,7 +349,10 @@ function lowerSelectors(root: Root, schema: BemModuleSchema): void {
 function appendExportMap(root: Root, schema: BemModuleSchema): void {
   const exportRule = postcss.rule({ selector: ":export" });
   for (const key of Object.keys(schema.exportMap).sort()) {
-    exportRule.append(postcss.decl({ prop: key, value: schema.exportMap[key]! }));
+    exportRule.append(postcss.decl({
+      prop: escapeCssIdentifier(key),
+      value: escapeCssClassList(schema.exportMap[key]!),
+    }));
   }
   root.append(exportRule);
 }

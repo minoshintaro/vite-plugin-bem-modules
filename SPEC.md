@@ -75,7 +75,7 @@ compileBemModule({
 
 `filePath`には、呼び出し側でcanonicalizeしたabsolute filesystem pathを渡します。ファイル名の`?`をqueryとして解釈しません。Viteのmodule idからqueryを除く処理はVite adapterが担当し、相対pathはCompilerの内部契約の対象外です。
 
-`schema`が意味の正本です。`classMap`はselector lowering、`exportMap`はCSS Modules公開値、schemaのclass keyはflat APIと`.d.ts`のprojectionに使います。Compilerの結果は同じ入力に対して同じ結果になり、Project stateやfilesystemを変更しません。
+`schema`が意味の正本です。`classMap`はselector lowering、`exportMap`はCSS Modules公開値、`classMap`と`nonClassExportNames`はflat APIと`.d.ts`のprojectionに使います。Compilerの結果は同じ入力に対して同じ結果になり、Project stateやfilesystemを変更しません。
 
 次の既存契約を維持します。
 

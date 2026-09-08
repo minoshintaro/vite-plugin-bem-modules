@@ -37,6 +37,10 @@ export default function bemModules(options: BemModulesOptions = {}): PluginOptio
       },
     },
 
+    configureServer(server) {
+      runtime.configureServer(server);
+    },
+
     async resolveId(source, importer) {
       if (!runtime.isActive()) return null;
       const nonModuleQuery = getNonModuleQuery(source);

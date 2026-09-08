@@ -363,3 +363,108 @@ test("Vite Adapterはimporter変更だけでProject stateを変更しない", as
     await closeServerAndRemoveRoot(server, root);
   }
 });
+
+test("Vite dev serverはroot外の明示includeをwatcherへ登録し、変更をd.tsへ同期する", {
+  skip: process.platform === "win32"
+    ? "Viteの実watcherはWindows runnerのlibuv assertionを避ける"
+    : false,
+}, async () => {
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-dev-external-watch-"));
+  const root = path.join(parent, "app");
+  const external = path.join(parent, "shared");
+  const cssFile = path.join(external, "Shared.module.css");
+  const dtsFile = `${cssFile}.d.ts`;
+  let server: Awaited<ReturnType<typeof createServer>> | null = null;
+
+  try {
+    await fs.mkdir(root);
+    await fs.mkdir(external);
+    await fs.writeFile(cssFile, cssSource("compact"), "utf8");
+    await fs.writeFile(
+      path.join(root, "main.ts"),
+      "import styles from '../shared/Shared.module.css'; export const value = styles.root;\n",
+      "utf8",
+    );
+
+    server = await createServer({
+      root,
+      configFile: false,
+      logLevel: "silent",
+      plugins: [bemModules({ types: true, project: { include: [".", external] } })],
+      server: {
+        middlewareMode: true,
+        watch: { usePolling: true, interval: 50 },
+      },
+    });
+
+    await waitFor(async () => {
+      try {
+        return (await fs.readFile(dtsFile, "utf8")).includes('"rootCompact"');
+      } catch {
+        return false;
+      }
+    });
+
+    await fs.writeFile(cssFile, cssSource("large"), "utf8");
+    await waitFor(async () => {
+      try {
+        const dts = await fs.readFile(dtsFile, "utf8");
+        return dts.includes('"rootLarge"') && !dts.includes('"rootCompact"');
+      } catch {
+        return false;
+      }
+    });
+  } finally {
+    await closeServerAndRemoveRoot(server, parent);
+  }
+});
+
+test("HMRは非class exportのprojection変更でscript importerをinvalidateする", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-dev-nonclass-hmr-"));
+  const cssFile = path.join(root, "Card.module.css");
+  const mainFile = path.join(root, "main.ts");
+  let server: Awaited<ReturnType<typeof createServer>> | null = null;
+
+  try {
+    await fs.writeFile(
+      cssFile,
+      "/* @block p-card */ @keyframes fade { from { opacity: 0; } to { opacity: 1; } } .root {}",
+      "utf8",
+    );
+    await fs.writeFile(
+      mainFile,
+      "import styles from './Card.module.css'; export const value = styles.root;\n",
+      "utf8",
+    );
+    server = await createServer({
+      root,
+      configFile: false,
+      logLevel: "silent",
+      plugins: [bemModules({ types: false })],
+      server: { middlewareMode: true, watch: null },
+    });
+    await server.transformRequest("/Card.module.css");
+
+    const mainNode = { file: mainFile, id: mainFile, importers: new Set() };
+    const cssNode = { file: cssFile, id: cssFile, importers: new Set([mainNode]) };
+    const cssPlugin = server.config.plugins.find((plugin) => plugin.name === "vite-plugin-bem-modules:css");
+    assert.ok(cssPlugin?.hotUpdate);
+    const hotUpdate = typeof cssPlugin.hotUpdate === "function"
+      ? cssPlugin.hotUpdate
+      : cssPlugin.hotUpdate.handler;
+    const result = await hotUpdate.call(
+      { warn() {} } as never,
+      {
+        type: "update",
+        file: cssFile,
+        timestamp: Date.now(),
+        modules: [cssNode],
+        read: async () => "/* @block p-card */ @keyframes fade-next { from { opacity: 0; } to { opacity: 1; } } .root {}",
+        server,
+      } as never,
+    );
+    assert.deepEqual(result, [cssNode, mainNode]);
+  } finally {
+    await closeServerAndRemoveRoot(server, root);
+  }
+});
