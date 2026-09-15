@@ -2,6 +2,14 @@
 
 このファイルには、利用者に影響する変更を記録します。
 
+## 0.1.1 - Unreleased
+
+- npm registryからインストールできる公開packageへ移行する。
+- escapeが必要なglobal class名と、`@value`・`@keyframes`の公開keyがCSS Modulesのexportから欠落・破損する問題を修正する。
+- `project.include`でVite root外を対象にした場合も、watcherへ登録して変更を検知する。
+- 英語を主とするREADMEと、日本語README・詳細な利用guideを整備する。
+- `bem-modules --help`と`bem-modules --version`を追加する。
+
 ## 0.1.0 - 2026-09-01
 
 - CSS Module の local class から型付きの flat BEM API を生成する初回リリース。
@@ -13,7 +21,7 @@
 - serve開始時と`types: true`のbuildでProject scope全体の`.d.ts`を同期し、module graphの到達性変化だけでは削除しない。
 - ViteのCSS Modules出力と生成`.d.ts`の所有を診断する。生成先のsymlinkは`BEM006`で拒否し、掃除でも参照先へ触れない。
 - 並行compile・HMRでも一意性を維持し、失敗した更新の後始末が後続の正常なschemaや生成型を消さない。
-- escapeが必要なglobal class名と、CLIが扱うファイル名中の`?`を保持する。
+- CLIが扱うファイル名中の`?`を保持する。
 - `css.modules: false`ではBEM query検査と型同期も無効化する。
 - 括弧付きICSS `@value` importを許可し、implicit BEM nestingの補間形式とsource内のSass `@extend`を`BEM005`で拒否する。
 - framework固有のvirtual CSS Moduleとbuild watch hookはv0.1の保証対象に含めない。

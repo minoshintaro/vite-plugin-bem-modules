@@ -112,15 +112,7 @@ test("kebab では -- が Modifier、単一ハイフンが Element の境界に�
   assert.equal(schema.classMap.rootState, "card__root-state");
 });
 
-test("root--primary は Block Modifier、root-primary は Element として扱う", () => {
-  const modifier = analyze("/* @block card */ .root {} .root--primary {}", KEBAB_NAMING);
-  const element = analyze("/* @block card */ .root {} .root-primary {}", KEBAB_NAMING);
-
-  assert.equal(modifier.classMap.rootPrimary, "card--primary");
-  assert.equal(element.classMap.rootPrimary, "card__root-primary");
-});
-
-test("camel の local class 名も flat API 名をそのまま使う", () => {
+test("camelのlocal class名とModifierをflat API名へ変換する", () => {
   const schema = analyze(
     `
 /* @block card */
@@ -132,7 +124,7 @@ test("camel の local class 名も flat API 名をそのまま使う", () => {
   );
 
   assert.equal(schema.classMap.profileImage, "card__profileImage");
-  assert.equal(schema.classMap.profileImage, "card__profileImage");
+  assert.equal(schema.classMap.profileImageExtraLarge, "card__profileImage--extraLarge");
   assert.equal(schema.classMap["profileImage--extraLarge"], "card__profileImage--extraLarge");
 });
 

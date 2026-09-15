@@ -1,4 +1,3 @@
-import path from "node:path";
 import {
   isAdjacentDtsPath,
   isModuleFilePath,
@@ -51,11 +50,4 @@ export function getNonModuleQuery(id: string): NonModuleQuery | null {
 
 export function hasNonModuleQuery(id: string): boolean {
   return getNonModuleQuery(id) !== null;
-}
-
-export function resolveRelativeModulePath(source: string, importer: string, root: string): string | null {
-  const clean = stripQuery(source);
-  if (clean.startsWith("/")) return normalizeFilePath(path.resolve(root, `.${clean}`));
-  if (!clean.startsWith("./") && !clean.startsWith("../")) return null;
-  return normalizeFilePath(path.resolve(path.dirname(stripQuery(importer)), clean));
 }

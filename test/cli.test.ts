@@ -16,6 +16,32 @@ function runCli(root: string, command: "check" | "sync", ...args: string[]): str
   });
 }
 
+test("CLIはhelpとpackage.jsonのversionを標準出力へ表示する", async () => {
+  const packageJson = JSON.parse(
+    await fs.readFile(path.join(repositoryRoot, "package.json"), "utf8"),
+  ) as { version: string };
+  const help = execFileSync(process.execPath, [cliPath, "--help"], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+  });
+  const version = execFileSync(process.execPath, [cliPath, "--version"], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+  });
+
+  assert.match(help, /^Usage: bem-modules <check\|sync>/);
+  assert.match(help, /--help/);
+  assert.equal(version, `${packageJson.version}\n`);
+  assert.throws(
+    () => execFileSync(process.execPath, [cliPath, "sync", "-v"], {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+      stdio: "pipe",
+    }),
+    /Unknown option: -v/,
+  );
+});
+
 test("CLIはshared configのnamingと明示Project scopeをそのまま使う", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-cli-"));
   try {

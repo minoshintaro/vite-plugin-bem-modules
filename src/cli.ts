@@ -23,7 +23,19 @@ function usage(): string {
     "  --config <path>     Shared bem-modules config (default: bem-modules.config.mjs/js)",
     "  --include <path>    Include a root-relative or absolute path (repeatable)",
     "  --exclude <path>    Exclude a root-relative or absolute path (repeatable)",
+    "  -h, --help          Show this help",
+    "  -v, --version       Show the package version",
   ].join("\n");
+}
+
+async function packageVersion(): Promise<string> {
+  const packageJson = JSON.parse(
+    await fs.readFile(new URL("../package.json", import.meta.url), "utf8"),
+  ) as { version?: unknown };
+  if (typeof packageJson.version !== "string") {
+    throw new Error("Package version is missing from package.json.");
+  }
+  return packageJson.version;
 }
 
 function requireValue(args: readonly string[], index: number, flag: string): string {
@@ -93,7 +105,16 @@ async function loadBemModulesOptions(root: string, configuredPath: string | unde
 }
 
 async function main(): Promise<void> {
-  const parsed = parseArguments(process.argv.slice(2));
+  const args = process.argv.slice(2);
+  if (args.length === 1 && (args[0] === "--help" || args[0] === "-h")) {
+    process.stdout.write(`${usage()}\n`);
+    return;
+  }
+  if (args.length === 1 && (args[0] === "--version" || args[0] === "-v")) {
+    process.stdout.write(`${await packageVersion()}\n`);
+    return;
+  }
+  const parsed = parseArguments(args);
   const config = await loadBemModulesOptions(parsed.root, parsed.config);
   // Resolve the shared object before applying CLI scope overrides. Besides
   // normalizing the same values as the Vite adapter, this keeps malformed

@@ -364,14 +364,6 @@ function lowerParsedModuleSource(filePath: string, root: Root, schema: BemModule
   return root.toString();
 }
 
-export function lowerBemModuleSource(
-  filePath: string,
-  source: string,
-  schema: BemModuleSchema,
-): string {
-  return lowerParsedModuleSource(filePath, parseModuleSource(filePath, source), schema);
-}
-
 export function analyzeAndLowerModuleSourceIfOwned(
   filePath: string,
   source: string,

@@ -1,13 +1,12 @@
 {
   "name": "vite-plugin-bem-modules",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.1.1",
   "description": "A Vite plugin that turns CSS Module class relationships into a typed BEM API.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "bem-modules": "./dist/cli.js"
+    "bem-modules": "dist/cli.js"
   },
   "author": "minoshintaro",
   "repository": {
@@ -35,11 +34,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typegen": "vite build --config examples/typegen/vite.config.mjs",
     "typecheck:example": "tsc -p examples/typegen/tsconfig.json --noEmit",
-    "check:typegen": "pnpm run typegen && pnpm run typecheck:example && node scripts/check-generated-types.mjs",
-    "test": "pnpm run build && node scripts/run-tests.mjs",
-    "pack:tgz": "pnpm pack --pack-destination .",
+    "check:typegen": "npm run typegen && npm run typecheck:example && node scripts/check-generated-types.mjs",
+    "test": "tsc -p tsconfig.json && node scripts/run-tests.mjs",
     "prepack": "tsc -p tsconfig.json",
-    "prepublishOnly": "pnpm test"
+    "prepublishOnly": "npm test"
   },
   "keywords": [
     "vite",

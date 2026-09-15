@@ -17,13 +17,14 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 test("package rootはfactory・共有判定・設定用型を公開し、source mapの参照元を配布する", async () => {
   const packageJson = JSON.parse(
     await fs.readFile(new URL("../package.json", import.meta.url), "utf8"),
-  ) as { files?: string[]; main?: string; types?: string; private?: boolean; bin?: Record<string, string>; scripts?: Record<string, string> };
+  ) as { files?: string[]; main?: string; types?: string; version?: string; private?: boolean; bin?: Record<string, string>; scripts?: Record<string, string> };
   assert.deepEqual(packageJson.files, ["CHANGELOG.md", "dist", "src"]);
   assert.equal(packageJson.main, "./dist/index.js");
   assert.equal(packageJson.types, "./dist/index.d.ts");
-  assert.equal(packageJson.private, true);
-  assert.equal(packageJson.scripts?.["pack:tgz"], "pnpm pack --pack-destination .");
-  assert.equal(packageJson.bin?.["bem-modules"], "./dist/cli.js");
+  assert.match(packageJson.version ?? "", /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
+  assert.equal("private" in packageJson, false);
+  assert.equal(packageJson.scripts?.prepublishOnly, "npm test");
+  assert.equal(packageJson.bin?.["bem-modules"], "dist/cli.js");
 
   const declaration = await fs.readFile(new URL("../dist/index.d.ts", import.meta.url), "utf8");
   assert.match(declaration, /export default function bemModules/);
@@ -68,12 +69,22 @@ test("package tarballは実行可能なbem-modules CLIを含む", async () => {
   assert.match(cliSource, /^#!\/usr\/bin\/env node\n/);
 
   const packageManagerCli = process.env.npm_execpath;
-  assert.ok(packageManagerCli, "run package tests through the declared package manager");
-  const listing = execFileSync(process.execPath, [packageManagerCli, "pack", "--dry-run", "--json"], {
-    cwd: repositoryRoot,
-    encoding: "utf8",
-  });
-  assert.match(listing, /dist[\\/]cli\.js/);
+  assert.ok(packageManagerCli, "run package tests through npm or the declared package manager");
+  const cache = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-package-cache-"));
+  try {
+    const listing = execFileSync(
+      process.execPath,
+      [packageManagerCli, "pack", "--dry-run", "--json"],
+      {
+        cwd: repositoryRoot,
+        encoding: "utf8",
+        env: { ...process.env, npm_config_cache: cache },
+      },
+    );
+    assert.match(listing, /dist[\\/]cli\.js/);
+  } finally {
+    await fs.rm(cache, { recursive: true, force: true });
+  }
 });
 
 test("package root export はconsumerのVite buildで利用できる", async () => {

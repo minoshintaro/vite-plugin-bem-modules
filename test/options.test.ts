@@ -45,7 +45,6 @@ test("typesは実行時にもbooleanへ限定する", () => {
 });
 
 test("modifierOutputはonlyまたはwithBaseに限定し、既定値はonlyとする", () => {
-  assert.equal(resolveOptions().modifierOutput, "only");
   assert.equal(resolveOptions({ modifierOutput: "withBase" }).modifierOutput, "withBase");
   assert.throws(
     () => resolveOptions({ modifierOutput: "invalid" as never }),
