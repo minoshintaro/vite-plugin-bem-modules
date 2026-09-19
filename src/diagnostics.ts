@@ -7,7 +7,8 @@ export type BemDiagnosticCode =
   | "BEM006"
   | "BEM007"
   | "BEM008"
-  | "BEM009";
+  | "BEM010"
+  | "BEM011";
 
 export type BemDiagnostic = {
   code: BemDiagnosticCode;
@@ -48,15 +49,5 @@ export function unsupportedCssModuleQueryError(
       `query: ?${query}`,
       "remove the query or use a CSS Module without an @block declaration.",
     ],
-  });
-}
-
-export function cssModuleOutputMismatchError(
-  file: string,
-  details: string[],
-): BemDiagnosticError {
-  return createBemDiagnosticError("BEM009", "Vite CSS Module output does not match the BEM schema.", {
-    file,
-    details,
   });
 }

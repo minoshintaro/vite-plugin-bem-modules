@@ -8,12 +8,21 @@ import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import ts from "typescript";
 import { build, type Plugin, type PluginOption } from "vite";
-import bemModules from "../src/index.js";
+import bemModules, { createBemPostcssPlugin } from "../src/index.js";
 
 type HookFunction = (...args: never[]) => unknown;
 
 function testBemModules(options: Parameters<typeof bemModules>[0] = {}) {
-  return bemModules(options);
+  const plugins = bemModules(options);
+  assert.ok(Array.isArray(plugins));
+  const postcssPlugin = createBemPostcssPlugin();
+  return [
+    ...plugins,
+    {
+      name: "test-register-bem-postcss",
+      config: () => ({ css: { postcss: { plugins: [postcssPlugin] } } }),
+    },
+  ];
 }
 
 function unwrapHook<T extends HookFunction>(hook: T | { handler: T }): T {
@@ -32,6 +41,23 @@ function getCssPlugin(options: Parameters<typeof bemModules>[0] = {}): Plugin {
       && candidate.name === "vite-plugin-bem-modules:css",
   );
   assert.ok(plugin);
+  const postcssPlugin = createBemPostcssPlugin(options);
+  const originalConfig = plugin.config;
+  plugin.config = {
+    order: "post",
+    handler: (config, env) => {
+      const base = typeof originalConfig === "function"
+        ? originalConfig(config, env)
+        : originalConfig.handler(config, env);
+      return {
+        ...base,
+        css: {
+          ...base?.css,
+          postcss: { plugins: [postcssPlugin] },
+        },
+      };
+    },
+  };
   return plugin;
 }
 
@@ -175,7 +201,7 @@ test("flat CSS Module keyだけを公開し、source transformを提供しない
       "utf8",
     );
 
-    await buildFixture(root, [bemModules({ types: true })], false);
+    await buildFixture(root, [testBemModules({ types: true })], false);
 
     const dts = await fs.readFile(path.join(root, "Card.module.css.d.ts"), "utf8");
     assert.match(dts, /readonly "rootCompact": string/);
@@ -255,7 +281,7 @@ test("Project excludeは未importのBEM Moduleを検査対象から除外する"
   }
 });
 
-test("無視directoryからのimportは明示includeしたときだけProjectの一意性検査と型生成へ参加する", async () => {
+test("無視directoryからのimportは明示includeしたときだけ型生成へ参加する", async () => {
   const root = await createFixture();
   const ignoredFile = path.join(root, "dist", "Other.module.css");
   try {
@@ -266,7 +292,7 @@ test("無視directoryからのimportは明示includeしたときだけProjectの
       root,
       configFile: false,
       logLevel: "silent",
-      plugins: [bemModules({ types: true, project: { include } })],
+      plugins: [testBemModules({ types: true, project: { include } })],
       build: {
         outDir: "out",
         emptyOutDir: true,
@@ -276,14 +302,15 @@ test("無視directoryからのimportは明示includeしたときだけProjectの
 
     await buildFixture();
     assert.match(await fs.readFile(path.join(root, "Card.module.css.d.ts"), "utf8"), /readonly "rootCompact": string/);
-    await assert.rejects(() => fs.access(`${ignoredFile}.d.ts`), { code: "ENOENT" });
-    await assert.rejects(() => buildFixture([".", "dist"]), /vite-plugin-bem-modules:BEM003/);
+    assert.match(await fs.readFile(`${ignoredFile}.d.ts`, "utf8"), /readonly "root": string/);
+    await buildFixture([".", "dist"]);
+    assert.match(await fs.readFile(`${ignoredFile}.d.ts`, "utf8"), /readonly "root": string/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
 
-test("既定のProject範囲は未importのBEM Moduleも検査する", async () => {
+test("既定のProject範囲は未importのBEM Moduleも同期対象にする", async () => {
   const root = await createFixture();
   try {
     await fs.writeFile(
@@ -291,19 +318,18 @@ test("既定のProject範囲は未importのBEM Moduleも検査する", async () 
       "/* @block p-card */ .root {}",
       "utf8",
     );
-    await assert.rejects(
+    await assert.doesNotReject(
       () => build({
         root,
         configFile: false,
         logLevel: "silent",
-        plugins: [bemModules({ types: false })],
+        plugins: [testBemModules({ types: false })],
         build: {
           outDir: "dist",
           emptyOutDir: true,
           lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
         },
       }),
-      /Block names must be unique across CSS Modules/,
     );
   } finally {
     await fs.rm(root, { recursive: true, force: true });
@@ -316,7 +342,7 @@ test("Project範囲内の未importModuleもHMR更新でschemaを再解析する"
   try {
     await fs.writeFile(cssFile, "/* @block p-unused */ .root {}", "utf8");
     await fs.writeFile(path.join(root, "main.ts"), "export const value = 1;", "utf8");
-    const plugins = bemModules({ types: false });
+    const plugins = testBemModules({ types: false });
     assert.ok(Array.isArray(plugins));
     const cssPlugin = plugins.find(
       (candidate): candidate is Plugin => typeof candidate === "object"
@@ -359,7 +385,7 @@ test("Project範囲内の未importModuleもHMR更新でschemaを再解析する"
   }
 });
 
-test("Project scope外のBEM ModuleもVite Adapterのtransform対象になる", async () => {
+test("Project scope外のBEM ModuleはPostCSSへ委譲し、Vite Adapterはtransformしない", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-project-transform-outside-"));
   const excludedFile = path.join(root, "fixtures", "Legacy.module.css");
   const cssSource = "/* @block p-legacy */ .root {}";
@@ -376,8 +402,7 @@ test("Project scope外のBEM ModuleもVite Adapterのtransform対象になる", 
       cssSource,
       excludedFile,
     );
-    assert.ok(transformed && typeof transformed === "object" && "code" in transformed);
-    assert.match((transformed as { code: string }).code, /p-legacy/);
+    assert.equal(transformed, null);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -561,7 +586,7 @@ test("inline PostCSS plugin と既存の getJSON は config hook で二重化し
   }
 });
 
-test("後続pluginのgetJSON設定でもBEM009観測を失わない", async () => {
+test("後続pluginのgetJSON設定でもPostCSSのCSS Modules処理を妨げない", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-late-get-json-"));
   try {
     await fs.writeFile(path.join(root, "_mixins.scss"), "@mixin badge { .badge { color: red; } }", "utf8");
@@ -579,7 +604,7 @@ test("後続pluginのgetJSON設定でもBEM009観測を失わない", async () =
       "utf8",
     );
 
-    await assert.rejects(
+    await assert.doesNotReject(
       () => build({
         root,
         configFile: false,
@@ -600,14 +625,13 @@ test("後続pluginのgetJSON設定でもBEM009観測を失わない", async () =
           lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
         },
       }),
-      /vite-plugin-bem-modules:BEM009.*unexpected keys: badge/s,
     );
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
 
-test("BEM schemaのaliasを削るlocalsConventionは出力不一致として拒否する", async () => {
+test("BEM schemaのaliasを追加するlocalsConventionはViteへ委譲する", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-convention-"));
   try {
     await fs.writeFile(
@@ -621,7 +645,7 @@ test("BEM schemaのaliasを削るlocalsConventionは出力不一致として拒�
       "utf8",
     );
 
-    await assert.rejects(
+    await assert.doesNotReject(
       () => build({
         root,
         configFile: false,
@@ -635,7 +659,6 @@ test("BEM schemaのaliasを削るlocalsConventionは出力不一致として拒�
           lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
         },
       }),
-      /vite-plugin-bem-modules:BEM009/,
     );
   } finally {
     await fs.rm(root, { recursive: true, force: true });
@@ -662,15 +685,14 @@ test("CSS ModuleのkeyframesとICSS valueを含むBEM moduleをbuildできる", 
 
     await buildFixture(root, [testBemModules({ types: true })], false);
     const dts = await fs.readFile(path.join(root, "Card.module.css.d.ts"), "utf8");
-    assert.match(dts, /readonly "primary": string/);
-    assert.match(dts, /readonly "fade-in": string/);
-    assert.match(dts, /readonly "fadeIn": string/);
+    assert.match(dts, /readonly "root": string/);
+    assert.doesNotMatch(dts, /primary|fade-in|fadeIn/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
 
-test("括弧付きICSS @value importをBEM009にしない", async () => {
+test("括弧付きICSS @value importを含むModuleを処理する", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-parenthesized-values-"));
   try {
     await fs.writeFile(
@@ -737,7 +759,7 @@ test("localsConvention camelCaseの追加aliasはBEM schemaと両立する", asy
   }
 });
 
-test("最終CSS Module exportにschema外classがあればBEM009で拒否する", async () => {
+test("Sass mixin由来のclassはVite CSS Modulesのruntime exportへ委譲する", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-mixin-output-"));
   try {
     await fs.writeFile(path.join(root, "_mixins.scss"), "@mixin badge { .badge { color: red; } }", "utf8");
@@ -755,7 +777,7 @@ test("最終CSS Module exportにschema外classがあればBEM009で拒否する"
       "utf8",
     );
 
-    await assert.rejects(
+    await assert.doesNotReject(
       () => build({
         root,
         configFile: false,
@@ -768,7 +790,6 @@ test("最終CSS Module exportにschema外classがあればBEM009で拒否する"
           lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
         },
       }),
-      /vite-plugin-bem-modules:BEM009.*unexpected keys: badge/s,
     );
   } finally {
     await fs.rm(root, { recursive: true, force: true });
@@ -860,7 +881,7 @@ test("css.modules:falseではquery判定をViteへ委譲し生成型にも触れ
         root,
         configFile: false,
         logLevel: "silent",
-        plugins: withPlugin ? [bemModules({ types: true })] : [],
+        plugins: withPlugin ? [testBemModules({ types: true })] : [],
         css: { modules: false },
         build: {
           outDir: "dist",
@@ -1137,7 +1158,7 @@ test("Sass @extend !optionalはBEMではBEM005で拒否し、通常Moduleでは�
         root,
         configFile: false,
         logLevel: "silent",
-        plugins: [bemModules({ types: true })],
+        plugins: [testBemModules({ types: true })],
         css: { modules: { generateScopedName: "plain_[local]" } },
         build: {
           outDir: "dist",
@@ -1334,7 +1355,7 @@ test("escapeを必要とするglobal classの同一性を最終CSS・export・�
   try {
     await fs.writeFile(path.join(root, "Card.module.css"), "/* @block p-card */ .root { color: red; } .foo\\.bar { padding: 11px; } .hover\\:bg { display: block; }", "utf8");
     await fs.writeFile(path.join(root, "main.ts"), "import styles from './Card.module.css'; export { styles };", "utf8");
-    await buildFixture(root, [bemModules({ types: true, globalScope: { exact: ["foo.bar"], prefix: ["hover:"] } })], false);
+    await buildFixture(root, [testBemModules({ types: true, globalScope: { exact: ["foo.bar"], prefix: ["hover:"] } })], false);
     const outputFiles = await fs.readdir(path.join(root, "dist"));
     const cssFile = outputFiles.find((file) => file.endsWith(".css"));
     const jsFile = outputFiles.find((file) => /\.m?js$/.test(file));
@@ -1348,24 +1369,24 @@ test("escapeを必要とするglobal classの同一性を最終CSS・export・�
     });
     assert.deepEqual(names.sort(), ["foo.bar", "hover:bg", "p-card"]);
     const built = await import(pathToFileURL(path.join(root, "dist", jsFile)).href);
-    assert.equal(built.styles["foo.bar"], "foo.bar");
-    assert.equal(built.styles["hover:bg"], "hover:bg");
+    assert.equal(built.styles["foo.bar"], undefined);
+    assert.equal(built.styles["hover:bg"], undefined);
     const dts = await fs.readFile(path.join(root, "Card.module.css.d.ts"), "utf8");
     assert.match(dts, /readonly "hover:bg": string/);
-    assert.match(await fs.readFile(path.join(root, "Card.module.css.d.ts"), "utf8"), /readonly "foo\.bar": string/);
+    assert.match(dts, /readonly "foo\.bar": string/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
 
-test("Project scope内の重複Block名をbuildで拒否する", async () => {
+test("Project scope内の重複Block名をbuildで許容する", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-duplicate-"));
   try {
     await fs.writeFile(path.join(root, "A.module.css"), "/* @block card */ .root {}", "utf8");
     await fs.writeFile(path.join(root, "B.module.css"), "/* @block card */ .root {}", "utf8");
     await fs.writeFile(path.join(root, "main.ts"), "import './A.module.css';", "utf8");
 
-    await assert.rejects(
+    await assert.doesNotReject(
       () => build({
         root,
         configFile: false,
@@ -1377,7 +1398,6 @@ test("Project scope内の重複Block名をbuildで拒否する", async () => {
           lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
         },
       }),
-      /Block names must be unique across CSS Modules/,
     );
   } finally {
     await fs.rm(root, { recursive: true, force: true });
@@ -1412,14 +1432,14 @@ test("project.startup: deferは起動時の全体走査を延期し、到達Modu
   }
 });
 
-test("Project scope内の生成class名衝突をbuildで拒否する", async () => {
+test("Project scope内の生成class名衝突をbuildで許容する", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-output-duplicate-"));
   try {
     await fs.writeFile(path.join(root, "A.module.css"), "/* @block card */ .title {}", "utf8");
     await fs.writeFile(path.join(root, "B.module.css"), "/* @block card__title */ .root {}", "utf8");
     await fs.writeFile(path.join(root, "main.ts"), "import './A.module.css'; import './B.module.css';", "utf8");
 
-    await assert.rejects(
+    await assert.doesNotReject(
       () => build({
         root,
         configFile: false,
@@ -1431,14 +1451,13 @@ test("Project scope内の生成class名衝突をbuildで拒否する", async () 
           lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
         },
       }),
-      /Generated class names must be unique across CSS Modules/,
     );
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
 
-test("root外のBEM ModuleはProjectへ明示includeしたときだけ一意性検査へ参加する", async () => {
+test("root外のBEM ModuleはProjectへ明示includeしたときも一意性検査を行わない", async () => {
   const parent = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-external-duplicate-"));
   const root = path.join(parent, "app");
   try {
@@ -1451,7 +1470,7 @@ test("root外のBEM ModuleはProjectへ明示includeしたときだけ一意性�
       "utf8",
     );
 
-    await assert.rejects(
+    await assert.doesNotReject(
       () => build({
         root,
         configFile: false,
@@ -1463,7 +1482,6 @@ test("root外のBEM ModuleはProjectへ明示includeしたときだけ一意性�
           lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
         },
       }),
-      /Block names must be unique across CSS Modules/,
     );
   } finally {
     await fs.rm(parent, { recursive: true, force: true });
@@ -1763,7 +1781,7 @@ test("再起動後のbuildでも削除済みCSS Moduleの生成d.tsをreconcile�
   }
 });
 
-test("hotUpdateでも重複Block名をエラーにする", async () => {
+test("hotUpdateでも重複Block名を許容する", async () => {
   const root = await createFixture();
   const plugin = getCssPlugin();
   try {
@@ -1772,7 +1790,7 @@ test("hotUpdateでも重複Block名をエラーにする", async () => {
     const duplicateFile = path.join(root, "Other.module.css");
     await fs.writeFile(duplicateFile, "/* @block p-card */ .root {}", "utf8");
     const hotUpdate = unwrapHook(plugin.hotUpdate!);
-    await assert.rejects(
+    await assert.doesNotReject(
       () => Promise.resolve(hotUpdate.call(
         { warn() {} } as never,
         {
@@ -1784,7 +1802,6 @@ test("hotUpdateでも重複Block名をエラーにする", async () => {
           server: {} as never,
         },
       )),
-      /Block names must be unique across CSS Modules/,
     );
   } finally {
     await fs.rm(root, { recursive: true, force: true });

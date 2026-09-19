@@ -3,20 +3,23 @@
 ## 現在の状態
 
 - 現行v0.1の保守起点は`maintenance/v0.1`に分離した。このbranchは`6ee6802f11fb3d76bb512226c14880e9c8354ec8`を指し、v0.1の公開準備と保守だけを扱う。
-- v0.2の設計・実装は`feat/v0.2-rebuild`で進める。現時点の製品`src/`と`package.json`はv0.1のままで、作り直しの製品実装は始まっていない。
+- v0.2の製品実装は`feat/v0.2-rebuild`へ移植済み。package rootは`bemModules`、`createBemPostcssPlugin`、`defineBemModulesConfig`を公開し、Compiler / Project / registryは内部に留める。
 - `REBUILD-SPEC.md`をv0.2の契約として更新し、構文解析、class-only型生成、双方向keyframes台帳、明示同期、Vite標準HMRの隔離試作結果を反映した。
 - v0.1のnpm publish、tag、GitHub Releaseはこのbranchでは行わない。
 
 ## アクティブフェーズ
 
-`REBUILD-SPEC.md`の公開API未決定事項を解消し、製品実装計画を作れる状態にする。
+`REBUILD-SPEC.md` Section 5 の判断を v0.2 初期 APIとして固定した。PostCSS pluginの明示登録を正本にし、Vite pluginは companion（設定検証、型同期、unlink処理、HMR境界）へ限定している。
+
+2026-09-19の製品実装では、ASTベースのclass / ID / keyframes lowering、class-only隣接型、双方向keyframes registry、明示的なPostCSS登録検証、Project-wide衝突許容、Vite標準HMR境界を`src/`へ移した。serveでは未import Moduleを自動同期せず、Viteが処理したModuleだけをPostCSS経由で型同期し、全体同期はCLI / buildの責務とした。この判断は、実dev検証でserve起動時の全体走査が未import型を先に生成することを観測したためである。
+
+`CI=true /Users/minos/.agents/bin/agent-test -- pnpm test` は対象139 / pass 139 / fail 0、`CI=true /Users/minos/.agents/bin/agent-test -- pnpm check:typegen` もexit 0だった。Vite 8.2.1のbuild/devと直接hotUpdate境界を検証済み。ブラウザE2E、Vite 6/7 matrix、Windows watcherは未検証。
 
 ## 今後のフェーズ
 
-1. 命名設定、`globalScope`、Project設定、CLI、PostCSS plugin exportのv0.2 APIを確定する。
-2. 隔離試作の成立部分を製品`src/`へ移す実装計画を作る。
-3. PostCSS変換、Vite companion、型同期、警告台帳の順に製品実装し、`REBUILD-SPEC.md`の受け入れ条件を実行する。
-4. v0.1からの移行案内とv0.2のREADMEを整備する。
+1. ブラウザHMR E2EとVite 6/7 matrixを、peer rangeを広げる前の確認として実行する。
+2. Windows watcherを含むCI環境で、直接hotUpdate以外のファイル監視経路を検証する。
+3. v0.1からの移行案内とv0.2のREADMEを、実際の公開手順に合わせて最終確認する。
 
 ## 作り直しの設計前提（現行v0.1とは別）
 

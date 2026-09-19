@@ -41,11 +41,12 @@ The package root exports the following API:
 | API | Purpose |
 | --- | --- |
 | default export `bemModules` | Plugin factory registered with Vite |
+| `createBemPostcssPlugin` | PostCSS AST transform registered explicitly in `css.postcss.plugins` |
 | `defineBemModulesConfig` | Identity helper for sharing one configuration object between Vite and the CLI |
 | `isBemGlobalClassName` | Helper for applying the same global-class matching rules elsewhere |
 | `BemGlobalScopeOptions`, `BemModulesOptions`, `BemNamingOptions`, `BemOutputSeparator`, `BemProjectOptions`, `BemProjectStartup`, `ModifierOutput`, `WordCase` | Types for `naming`, `globalScope`, `modifierOutput`, `types`, and `project` options |
 
-Types for a CSS Module's public keys—classes, `@value` entries, and `@keyframes`—come from the adjacent generated `.d.ts` file.
+The stable generated type surface contains class keys only. ID, keyframes, `@value`, and arbitrary ICSS export keys are intentionally outside the v0.2 TypeScript API.
 
 ## Add the plugin to Vite
 
@@ -53,14 +54,15 @@ Register the plugin in `vite.config.ts` or `vite.config.js`:
 
 ```ts
 import { defineConfig } from "vite";
-import bemModules from "vite-plugin-bem-modules";
+import bemModules, { createBemPostcssPlugin } from "vite-plugin-bem-modules";
 
 export default defineConfig({
   plugins: [bemModules()],
+  css: { postcss: { plugins: [createBemPostcssPlugin()] } },
 });
 ```
 
-This package is a Vite plugin. It cannot be used directly as a PostCSS or Rollup plugin.
+The Vite companion and the PostCSS transformer are separate by design. Register the PostCSS factory explicitly and keep other PostCSS plugins in the same array and order. The companion fails with `BEM010` when the marker is missing. It cannot be used as a Rollup plugin.
 
 ## Minimal example
 
@@ -141,7 +143,7 @@ A CSS Module managed by this plugin must contain exactly one `@block` declaratio
 
 The Block name is never inferred from the file name. A CSS Module without `@block` is left to Vite's standard CSS Modules processing.
 
-A file cannot declare more than one `@block`, and Block names must be unique within the Project scope.
+A file cannot declare more than one `@block`. v0.2 allows the same Block or generated class name in multiple Modules; CSS keeps the normal global cascade semantics.
 
 ### `root` and Elements
 
@@ -242,10 +244,11 @@ With this configuration, `.title-large` becomes `p-card_title-large`. Separators
 
 ```ts
 import { defineConfig } from "vite";
-import bemModules from "vite-plugin-bem-modules";
+import bemModules, { createBemPostcssPlugin } from "vite-plugin-bem-modules";
 
 export default defineConfig({
   plugins: [bemModules({ modifierOutput: "withBase" })],
+  css: { postcss: { plugins: [createBemPostcssPlugin()] } },
 });
 ```
 
@@ -256,7 +259,7 @@ export default defineConfig({
 
 ### Commit generated type declarations
 
-During dev server startup—or during a build with `types: true`—a CSS Module with `@block` receives an adjacent declaration such as `Card.module.css.d.ts`. It contains every public runtime key, including class and non-class exports. TypeScript can then complete known keys and reject missing ones.
+When Vite processes a CSS Module with `@block` during dev—or during a build with `types: true`—it receives an adjacent declaration such as `Card.module.css.d.ts`. The declaration contains class keys only. TypeScript can then complete the stable class API and reject missing keys.
 
 The generated `.d.ts` is derived from the CSS source. For v0.1, committing it to the consumer repository is recommended so editors and `tsc` can resolve the class dictionary immediately after a clone. Do not edit generated declarations by hand; regenerate them whenever the source CSS changes.
 
@@ -278,10 +281,11 @@ To make declaration generation part of the Vite build lifecycle, use a dedicated
 ```ts
 // vite.types.config.ts
 import { defineConfig } from "vite";
-import bemModules from "vite-plugin-bem-modules";
+import bemModules, { createBemPostcssPlugin } from "vite-plugin-bem-modules";
 
 export default defineConfig({
   plugins: [bemModules({ types: true, project: { include: ["src"] } })],
+  css: { postcss: { plugins: [createBemPostcssPlugin()] } },
   build: {
     outDir: ".typegen-dist",
     lib: {
@@ -312,10 +316,11 @@ Set `types: false` when a JavaScript project does not need declarations. Synchro
 ```js
 // vite.config.js
 import { defineConfig } from "vite";
-import bemModules from "vite-plugin-bem-modules";
+import bemModules, { createBemPostcssPlugin } from "vite-plugin-bem-modules";
 
 export default defineConfig({
   plugins: [bemModules({ types: false })],
+  css: { postcss: { plugins: [createBemPostcssPlugin()] } },
 });
 ```
 
@@ -330,8 +335,9 @@ Project validation and declaration synchronization operate on the explicit `root
 - Directories ignored by default, including `node_modules`, `.git`, and `dist`, remain outside Project validation and type synchronization even when imported. An explicitly included file or directory is admitted, but nested ignored directories still require their own explicit include.
 
 ```ts
-import bemModules from "vite-plugin-bem-modules";
+import bemModules, { createBemPostcssPlugin } from "vite-plugin-bem-modules";
 
+// Keep this PostCSS registration in the Vite config as shown above.
 bemModules({
   project: {
     include: ["src", "/workspace/shared/blocks"],
@@ -340,9 +346,9 @@ bemModules({
 });
 ```
 
-Every CSS Module in the Project scope participates in Block-name and generated-class uniqueness checks, even when it is not imported. Validation therefore does not change with the entry point or module graph.
+`project.include` / `project.exclude` define the explicit scope for `check` and `sync`, including Modules that are not imported. Project-wide Block-name and generated-class uniqueness checks are not part of v0.2.
 
-For integrations that perform the startup scan elsewhere, set `project.startup: "defer"`. This postpones only full-Project validation and synchronization during `buildStart`; transformation, HMR, and incremental uniqueness checks for CSS Modules reached by Vite remain active. The default `"scan"` mode validates and synchronizes the entire explicit scope at startup.
+For integrations that perform the startup scan elsewhere, set `project.startup: "defer"`. This postpones full-scope `check` / `sync` during `buildStart`; transformation and HMR for CSS Modules reached by Vite remain active. The default `"scan"` mode keeps the explicit scope available for startup processing.
 
 ```ts
 bemModules({
@@ -369,11 +375,14 @@ export default {
 ```js
 // vite.config.mjs
 import { defineConfig } from "vite";
-import bemModules, { defineBemModulesConfig } from "vite-plugin-bem-modules";
+import bemModules, { createBemPostcssPlugin, defineBemModulesConfig } from "vite-plugin-bem-modules";
 import bemConfig from "./bem-modules.config.mjs";
 
 const config = defineBemModulesConfig(bemConfig);
-export default defineConfig({ plugins: [bemModules(config)] });
+export default defineConfig({
+  plugins: [bemModules(config)],
+  css: { postcss: { plugins: [createBemPostcssPlugin()] } },
+});
 ```
 
 ```json
@@ -416,7 +425,7 @@ A CSS Module without `@block` uses Vite's standard processing:
 
 This file receives neither BEM transformation nor a BEM declaration file. Add `@block` only to files managed by this plugin.
 
-Local classes in managed Modules are emitted as final BEM names inside `:global(...)`, so CSS Modules hashing no longer provides scope isolation for them. Block names and generated class names must therefore remain unique within the Project scope.
+Local classes in managed Modules are emitted as final BEM names inside `:global(...)`, so CSS Modules hashing no longer provides scope isolation for them. If names collide, the browser applies its normal CSS cascade and animation rules.
 
 ## Supported behavior and limitations
 
@@ -427,10 +436,10 @@ Local classes in managed Modules are emitted as final BEM names inside `:global(
 - CSS Modules `composes` is not supported.
 - Managed selectors must spell out static class names such as `.root--compact`. Sass `&--modifier`, selector interpolation containing `#{...}`, and `@at-root` are rejected with `BEM005` because they prevent deterministic lowering. Sass interpolation in declaration values and ordinary nesting with explicit selectors are supported.
 - Sass `@extend` is not supported in managed Modules. Any source-level `@extend`, including `!optional` and placeholder targets, produces `BEM005`. The plugin cannot detect `@extend` hidden inside external partials or mixins, so those forms must also be avoided. Use mixins that share declarations without selector inheritance.
-- If a Sass partial or mixin emits an undeclared local class from a managed Module, validation fails with `BEM009`. Mark shared helper classes explicitly as `:global(.sharedHelper)`, or move them outside the managed CSS Module.
+- Static local classes emitted by a Sass partial or mixin are processed as part of the managed Module. Mark shared helper classes explicitly as `:global(.sharedHelper)` when they must remain outside the BEM class API.
 - `?raw`, `?inline`, and `?url` cannot be used with a managed Module.
 - With `css.modules: false`, BEM transformation, query validation, Project validation, and type synchronization are disabled. Query behavior falls back to Vite.
-- `css.modules.localsConvention` settings that remove BEM API keys, such as `camelCaseOnly` and `dashesOnly`, are rejected with `BEM009`. Additive aliases such as `camelCase` and `dashes` are supported.
+- `css.modules.localsConvention` and other CSS Modules export options are delegated to Vite. The plugin's declaration file contains only its own class keys; additional runtime aliases are not added to that stable type contract.
 - `css.transformer: "lightningcss"` is not supported. Use Vite's default CSS Modules transformer.
 
 ### Diagnostic codes
@@ -439,13 +448,14 @@ Local classes in managed Modules are emitted as final BEM names inside `:global(
 | --- | --- |
 | `BEM001` | The Block name in `@block` is empty or invalid |
 | `BEM002` | A CSS Module contains more than one `@block` declaration |
-| `BEM003` | A class name, Modifier, Block, or generated class violates naming or uniqueness rules |
+| `BEM003` | A class name, Modifier, or Block violates the naming rules |
 | `BEM004` | A configuration value or CSS transformer is unsupported |
 | `BEM005` | A dynamic Sass selector or unsupported `@extend` was found |
 | `BEM006` | An adjacent `.d.ts` is not owned by the plugin |
 | `BEM007` | CSS Modules `composes` is used |
 | `BEM008` | A managed Module is imported with `?raw`, `?inline`, or `?url` |
-| `BEM009` | Vite's final CSS Module export does not match the schema |
+| `BEM010` | The BEM PostCSS plugin is not registered in `css.postcss.plugins` |
+| `BEM011` | The unsupported Lightning CSS transformer is enabled for CSS Modules |
 
 ## License
 

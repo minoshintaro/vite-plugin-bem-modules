@@ -24,10 +24,11 @@ Vite 8とNode.js `^22.13.0`または`>=24.0.0`が必要です。`.module.css`と
 
 ```ts
 import { defineConfig } from "vite";
-import bemModules from "vite-plugin-bem-modules";
+import bemModules, { createBemPostcssPlugin } from "vite-plugin-bem-modules";
 
 export default defineConfig({
   plugins: [bemModules()],
+  css: { postcss: { plugins: [createBemPostcssPlugin()] } },
 });
 ```
 
@@ -101,11 +102,11 @@ bemModules({ modifierOutput: "withBase" });
 
 JavaScript側のキーは、kebab-case入力でも`styles.profileImage`のようなcamelCaseになります。区切り記号の組み合わせや設定例は[利用ガイド](https://github.com/minoshintaro/vite-plugin-bem-modules/blob/main/docs/guide.ja.md)を参照してください。
 
-`is-*`などのクラスを変換から除外するには`globalScope`、検査・型生成の対象を絞るには`project.include`と`project.exclude`を使います。対象パスはViteの`root`相対または絶対パスで指定し、globは使いません。
+`is-*`などのクラスを変換から除外するには`globalScope`、検査・型生成の対象を絞るには`project.include`と`project.exclude`を使います。対象パスはViteの`root`相対または絶対パスで指定し、globは使いません。CSS内では`:global(.utility)`も使えます。
 
 ## 型生成とCLI
 
-既定では、開発サーバーの起動時に対象CSS Moduleの隣へ`Card.module.css.d.ts`などの型宣言を生成します。クラス名に加えて、`@value`と`@keyframes`の公開キーも補完・検査できます。クローン直後から型を使えるよう、生成ファイルのコミットを推奨します。
+Viteが開発中に処理したCSS Module、または`types: true`のbuildでは、隣へ`Card.module.css.d.ts`などの型宣言を生成します。宣言に含めるのはclass keyだけで、ID、keyframes、`@value`、任意のICSS exportは安定したTypeScript APIに含めません。クローン直後から型を使えるよう、生成ファイルのコミットを推奨します。
 
 ビルドでも同期するには`types: true`を指定します。ビルド時に省略すると既存の型宣言は変更しません。`types: false`では、プラグインが生成した型宣言を削除します。
 
@@ -124,7 +125,8 @@ Viteを起動せずに検査・同期する場合は、同梱CLIを`package.json
 
 ## 導入前に確認すること
 
-- 生成クラスはハッシュ付きではなくグローバルなBEM名になります。検査対象の範囲内で、ブロック名と生成クラス名を一意にしてください。既定の検査範囲はViteの`root`配下です。
+- 生成クラスはハッシュ付きではなくグローバルなBEM名になります。Module間の名前衝突は許容され、CSSは通常のcascadeとanimationの規則に従います。
+- `createBemPostcssPlugin()`を`css.postcss.plugins`へ明示登録してください。Vite companionはPostCSS pluginを自動挿入・並べ替えせず、登録がない場合は設定解決時に停止します。
 - クラス名は明示的に書く必要があります。Sassの`&--modifier`、セレクタ補間、`@at-root`、`@extend`には対応しません。
 - BEM変換するファイルでは`composes`、`?raw`、`?inline`、`?url`を使えません。`css.transformer: "lightningcss"`も非対応です。
 - フレームワークが生成する`<style module>`など、実体パスを持たない仮想CSS Moduleは対象外です。

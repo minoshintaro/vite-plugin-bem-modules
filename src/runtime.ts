@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type {
-  CSSModulesOptions,
   ConfigEnv,
   EnvironmentModuleNode,
   HotUpdateOptions,
@@ -9,10 +8,9 @@ import type {
   UserConfig,
   ViteDevServer,
 } from "vite";
-import { cssModuleOutputMismatchError, createBemDiagnosticError } from "./diagnostics.js";
+import { createBemDiagnosticError } from "./diagnostics.js";
 import { compileBemModule } from "./compiler.js";
 import { createBemProjectIndex, type BemProjectIndex, type ProjectDtsMode } from "./project.js";
-import { unescapeCssIdentifier } from "./schema.js";
 import type {
   BemModuleSchema,
   BemModulesOptions,
@@ -21,7 +19,6 @@ import type {
 } from "./types.js";
 import { canonicalFilePath } from "./utils.js";
 import {
-  hasNonModuleQuery,
   isAdjacentDtsFile,
   isInNodeModules,
   isModuleFile,
@@ -30,58 +27,12 @@ import {
   stripQuery,
 } from "./vite-utils.js";
 import { resolveOptions } from "./options.js";
-
-const OBSERVER_GET_JSON = Symbol("vite-plugin-bem-modules:getJSON");
-type GetJSON = NonNullable<CSSModulesOptions["getJSON"]>;
-type ObserverGetJSON = GetJSON & { [OBSERVER_GET_JSON]?: true };
-type CssModulesObserverState = {
-  active: boolean;
-  observe: (filePath: string, json: Record<string, string>) => void;
-};
-
-function createCssModulesObserver(
-  existingGetJSON: GetJSON | undefined,
-  state: CssModulesObserverState,
-): ObserverGetJSON {
-  const observer = ((cssFileName, json, outputFileName) => {
-    if (state.active) {
-      existingGetJSON?.(cssFileName, json, outputFileName);
-      return;
-    }
-    state.active = true;
-    try {
-      state.observe(cssFileName, json);
-      existingGetJSON?.(cssFileName, json, outputFileName);
-    } finally {
-      state.active = false;
-    }
-  }) as ObserverGetJSON;
-  observer[OBSERVER_GET_JSON] = true;
-  return observer;
-}
-
-function isObserverGetJSON(value: GetJSON | undefined): boolean {
-  return typeof value === "function"
-    && (value as ObserverGetJSON)[OBSERVER_GET_JSON] === true;
-}
-
-function wrapCssModulesObserver(
-  modules: CSSModulesOptions,
-  state: CssModulesObserverState,
-): void {
-  const existingGetJSON = modules.getJSON;
-  if (isObserverGetJSON(existingGetJSON)) return;
-  modules.getJSON = createCssModulesObserver(existingGetJSON, state);
-}
-
-function wrapResolvedCssModulesObserver(
-  config: ResolvedConfig,
-  state: CssModulesObserverState,
-): void {
-  const modules = config.css.modules;
-  if (!modules || typeof modules !== "object") return;
-  wrapCssModulesObserver(modules, state);
-}
+import {
+  BEM_POSTCSS_PLUGIN_MARKER,
+  type BemPostcssDtsMode,
+  type BemPostcssPlugin,
+} from "./postcss.js";
+import { KeyframesRegistry } from "./keyframes-registry.js";
 
 type BemRuntime = {
   options: ResolvedBemModulesOptions;
@@ -89,11 +40,35 @@ type BemRuntime = {
   config(config: UserConfig, _env: ConfigEnv): UserConfig;
   configureServer(server: ViteDevServer): void;
   isActive(): boolean;
+  ignoreVirtualCssModule(filePath: string): void;
   isOwnedCssModule(filePath: string): Promise<boolean>;
   transformCss(filePath: string, source: string): Promise<string | null>;
   handleBuildStart(): Promise<void>;
   handleHotUpdate(context: HotUpdateOptions): Promise<EnvironmentModuleNode[] | void>;
 };
+
+function findBemPostcssPlugin(value: unknown): BemPostcssPlugin | null {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findBemPostcssPlugin(item);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof value !== "object" || value === null) return null;
+  const candidate = value as Partial<BemPostcssPlugin>;
+  return candidate[BEM_POSTCSS_PLUGIN_MARKER] === true
+    && typeof candidate.configure === "function"
+    && typeof candidate.cleanup === "function"
+    ? candidate as BemPostcssPlugin
+    : null;
+}
+
+function resolvedPostcssPlugin(config: ResolvedConfig): BemPostcssPlugin | null {
+  const postcss = config.css.postcss as unknown;
+  if (typeof postcss !== "object" || postcss === null) return null;
+  return findBemPostcssPlugin((postcss as { plugins?: unknown }).plugins);
+}
 
 function collectAffectedModules(modules: readonly EnvironmentModuleNode[]): EnvironmentModuleNode[] {
   const affected = new Set<EnvironmentModuleNode>(modules);
@@ -136,22 +111,22 @@ function dtsModeFor(
   return "ignore";
 }
 
+function projectDtsModeFor(
+  options: ResolvedBemModulesOptions,
+  command: ConfigEnv["command"],
+): ProjectDtsMode {
+  // In dev, PostCSS writes declarations only for Modules that Vite actually
+  // processes. Full-scope generation remains the explicit `bem-modules sync`
+  // responsibility; false still performs cleanup.
+  return dtsModeFor(options, command);
+}
+
 async function readSource(filePath: string): Promise<string | null> {
   try {
     return await fs.readFile(filePath, "utf8");
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR") return null;
-    throw error;
-  }
-}
-
-async function isRegularFile(filePath: string): Promise<boolean> {
-  try {
-    return (await fs.stat(filePath)).isFile();
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR") return false;
     throw error;
   }
 }
@@ -172,51 +147,6 @@ function externalProjectIncludes(
     .filter((include) => !isPathWithin(include, canonicalRoot)))];
 }
 
-function unescapeCssClassList(value: string): string {
-  return value
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .map(unescapeCssIdentifier)
-    .join(" ");
-}
-
-function normalizeCssModulesJson(
-  json: Record<string, string>,
-  schema: BemModuleSchema,
-): void {
-  const normalized = Object.entries(json).map(([key, value]) => {
-    const unescapedKey = unescapeCssIdentifier(key);
-    const unescapedValue = Object.prototype.hasOwnProperty.call(schema.exportMap, unescapedKey)
-      ? unescapeCssClassList(value)
-      : value;
-    return [unescapedKey, unescapedValue] as const;
-  });
-  for (const key of Object.keys(json)) delete json[key];
-  for (const [key, value] of normalized) json[key] = value;
-}
-
-function mergeCssModulesObserver(
-  config: UserConfig,
-  state: CssModulesObserverState,
-): UserConfig {
-  if (config.css?.modules === false) return {};
-  const existingGetJSON = config.css?.modules && typeof config.css.modules === "object"
-    ? config.css.modules.getJSON
-    : undefined;
-
-  // Return only the plugin-owned delta. Vite concatenates arrays while
-  // merging config hooks, so spreading the user's css config would duplicate
-  // inline PostCSS plugins and other array-valued CSS options.
-  return {
-    css: {
-      modules: {
-        getJSON: createCssModulesObserver(existingGetJSON, state),
-      },
-    },
-  };
-}
-
 export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
   const resolvedOptions = resolveOptions(options);
   const compilerOptions: ResolvedBemCompilerOptions = {
@@ -228,44 +158,7 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
   let project: BemProjectIndex | null = null;
   let resolvedConfig: ResolvedConfig | null = null;
   let command: ConfigEnv["command"] = "serve";
-
-  const observeCssModuleOutput = (filePath: string, json: Record<string, string>): void => {
-    if (hasNonModuleQuery(filePath)) return;
-    const canonical = canonicalFilePath(stripQuery(filePath));
-    const schema = project?.getSchema(canonical) ?? externalSchemas.get(canonical);
-    if (!schema) return;
-
-    normalizeCssModulesJson(json, schema);
-    const expected = schema.exportMap;
-    const missing = Object.keys(expected).filter((key) => json[key] !== expected[key]);
-    const expectedValues = new Set([
-      ...Object.values(schema.classMap),
-      ...Object.values(expected),
-    ]);
-    const nonClassExports = new Set(schema.nonClassExportNames);
-    const cssModules = resolvedConfig?.css.modules;
-    const exportedGlobals = cssModules && typeof cssModules === "object" && cssModules.exportGlobals === true
-      ? new Set(schema.explicitGlobalClassNames)
-      : new Set<string>();
-    const unexpected = Object.keys(json).filter((key) => {
-      if (Object.prototype.hasOwnProperty.call(expected, key)) return false;
-      if (nonClassExports.has(key)) return false;
-      if (exportedGlobals.has(json[key]!)) return false;
-      return !expectedValues.has(json[key]!);
-    });
-    if (missing.length === 0 && unexpected.length === 0) return;
-
-    const details = [
-      ...(missing.length > 0 ? [`mismatched keys: ${missing.join(", ")}`] : []),
-      ...(unexpected.length > 0 ? [`unexpected keys: ${unexpected.join(", ")}`] : []),
-    ];
-    throw cssModuleOutputMismatchError(canonical, details);
-  };
-
-  const cssModulesObserverState: CssModulesObserverState = {
-    active: false,
-    observe: observeCssModuleOutput,
-  };
+  let postcssPlugin: BemPostcssPlugin | null = null;
 
   const compile = async (filePath: string, source: string) => {
     if (!project) return compileBemModule({ filePath, source, options: compilerOptions });
@@ -287,35 +180,63 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
     configResolved(config) {
       if (config.css.transformer === "lightningcss" && config.css.modules !== false) {
         throw createBemDiagnosticError(
-          "BEM004",
+          "BEM011",
           "css.transformer: \"lightningcss\" is not supported by vite-plugin-bem-modules.",
           { details: ["use the default \"postcss\" transformer for CSS Modules integration."] },
         );
       }
-      wrapResolvedCssModulesObserver(config, cssModulesObserverState);
+      postcssPlugin = resolvedPostcssPlugin(config);
+      if (config.css.modules !== false && !postcssPlugin) {
+        throw createBemDiagnosticError(
+          "BEM010",
+          "BEM PostCSS plugin must be explicitly registered in css.postcss.plugins.",
+          {
+            details: [
+              "register createBemPostcssPlugin() in the same PostCSS plugin array as the other CSS plugins.",
+            ],
+          },
+        );
+      }
       resolvedConfig = config;
       project = createBemProjectIndex({
         root: config.root,
         compilerOptions,
         scope: resolvedOptions.project,
-        dtsMode: dtsModeFor(resolvedOptions, command),
+        dtsMode: projectDtsModeFor(resolvedOptions, command),
+      });
+      postcssPlugin?.configure({
+        compilerOptions,
+        dtsMode: dtsModeFor(resolvedOptions, command) as BemPostcssDtsMode,
+        keyframesRegistry: new KeyframesRegistry(),
       });
       externalSchemas.clear();
     },
 
     config(config, env) {
       command = env.command;
-      project?.setDtsMode(dtsModeFor(resolvedOptions, command));
-      return mergeCssModulesObserver(config, cssModulesObserverState);
+      project?.setDtsMode(projectDtsModeFor(resolvedOptions, command));
+      // The registered PostCSS factory owns the AST and appends the class-only
+      // :export map. Vite remains the sole producer of the runtime CSS Module
+      // object; do not rewrite or validate its JSON projection here.
+      void config;
+      return {};
     },
 
     configureServer(server) {
       const includes = externalProjectIncludes(server.config.root, resolvedOptions.project.include);
       if (includes.length > 0) server.watcher.add(includes);
+      server.watcher.on("all", (event, file) => {
+        if (event !== "unlink" || !isModuleFile(file)) return;
+        void postcssPlugin?.cleanup(file);
+      });
     },
 
     isActive() {
       return resolvedConfig?.css.modules !== false;
+    },
+
+    ignoreVirtualCssModule(filePath) {
+      postcssPlugin?.ignore(filePath);
     },
 
     async isOwnedCssModule(filePath) {
@@ -326,17 +247,24 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
     },
 
     async transformCss(filePath, source) {
-      if (isVirtualModule(filePath)) return null;
-      if (!(await isRegularFile(filePath))) return null;
-      const result = await compile(canonicalFilePath(stripQuery(filePath)), source);
-      return result?.loweredSource ?? null;
+      // The PostCSS factory owns AST lowering. The Vite companion keeps this
+      // hook as a no-op so Sass/PostCSS/CSS Modules are executed exactly once
+      // by Vite in the user's declared plugin order.
+      void filePath;
+      void source;
+      return null;
     },
 
     async handleBuildStart() {
       if (!resolvedConfig || !this.isActive() || !project) return;
+      // Serve-time declarations are written by the registered PostCSS plugin
+      // for modules Vite actually processes. Full-scope reconciliation is an
+      // explicit `bem-modules sync`/build responsibility.
+      if (command === "serve") return;
       if (resolvedOptions.project.startup === "defer") return;
-      project.setDtsMode(dtsModeFor(resolvedOptions, command));
-      if (dtsModeFor(resolvedOptions, command) === "ignore") await project.check();
+      const mode = projectDtsModeFor(resolvedOptions, command);
+      project.setDtsMode(mode);
+      if (mode === "ignore") await project.check();
       else await project.sync();
     },
 
@@ -349,6 +277,7 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
       const previousSchema = project?.getSchema(canonical) ?? externalSchemas.get(canonical);
       if (context.type === "delete") {
         await project?.remove(canonical);
+        await postcssPlugin?.cleanup(canonical);
         externalSchemas.delete(canonical);
         return collectAffectedModules(context.modules);
       }

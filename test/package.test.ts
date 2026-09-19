@@ -6,10 +6,19 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 import { build } from "vite";
-import bemModules, { defineBemModulesConfig, isBemGlobalClassName } from "vite-plugin-bem-modules";
+import bemModules, { createBemPostcssPlugin, defineBemModulesConfig, isBemGlobalClassName } from "vite-plugin-bem-modules";
 
 function testBemModules(options: Parameters<typeof bemModules>[0] = {}) {
-  return bemModules(options);
+  const plugins = bemModules(options);
+  assert.ok(Array.isArray(plugins));
+  const postcssPlugin = createBemPostcssPlugin();
+  return [
+    ...plugins,
+    {
+      name: "test-register-bem-postcss",
+      config: () => ({ css: { postcss: { plugins: [postcssPlugin] } } }),
+    },
+  ];
 }
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");

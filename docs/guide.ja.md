@@ -41,11 +41,12 @@ package rootは次のAPIを公開します。
 | API | 用途 |
 | --- | --- |
 | default export `bemModules` | Viteへ登録するプラグインfactory |
+| `createBemPostcssPlugin` | `css.postcss.plugins`へ明示登録するPostCSS AST変換 |
 | `defineBemModulesConfig` | Vite configとCLIで同じ設定objectを共有するidentity helper |
 | `isBemGlobalClassName` | global classの一致判定を共有するhelper |
 | `BemGlobalScopeOptions`、`BemModulesOptions`、`BemNamingOptions`、`BemOutputSeparator`、`BemProjectOptions`、`BemProjectStartup`、`ModifierOutput`、`WordCase` | `naming`、`globalScope`、`modifierOutput`、`types`、`project`の設定 |
 
-CSS Moduleの公開key（class、`@value`、`@keyframes`）の型は、対象ファイルの隣に生成される`.d.ts`から利用します。
+生成される型の安定した公開面はclass keyだけです。ID、keyframes、`@value`、任意のICSS export keyはv0.2のTypeScript APIに含めません。
 
 ## Viteへの追加
 
@@ -53,14 +54,15 @@ CSS Moduleの公開key（class、`@value`、`@keyframes`）の型は、対象フ
 
 ```ts
 import { defineConfig } from "vite";
-import bemModules from "vite-plugin-bem-modules";
+import bemModules, { createBemPostcssPlugin } from "vite-plugin-bem-modules";
 
 export default defineConfig({
   plugins: [bemModules()],
+  css: { postcss: { plugins: [createBemPostcssPlugin()] } },
 });
 ```
 
-このパッケージはVite pluginとして動作します。PostCSS pluginやRollup pluginとしては利用できません。
+Vite companionとPostCSS transformerは役割を分けています。PostCSS factoryを明示登録し、他のPostCSS pluginも同じ配列へ順番どおりに並べてください。markerが見つからない場合、companionは`BEM010`で停止します。Rollup pluginとしては利用できません。
 
 ## 最小例
 
@@ -242,10 +244,11 @@ bemModules({
 
 ```ts
 import { defineConfig } from "vite";
-import bemModules from "vite-plugin-bem-modules";
+import bemModules, { createBemPostcssPlugin } from "vite-plugin-bem-modules";
 
 export default defineConfig({
   plugins: [bemModules({ modifierOutput: "withBase" })],
+  css: { postcss: { plugins: [createBemPostcssPlugin()] } },
 });
 ```
 
@@ -256,7 +259,7 @@ export default defineConfig({
 
 ### 型宣言をコミットする
 
-`@block`を持つCSS Moduleには、serveまたは`types: true`のbuildで、実行時に公開されるclassと非class exportのkeyを持つ`Card.module.css.d.ts`を生成します。TypeScriptでは、定義したkeyを補完でき、存在しないkeyを検出できます。
+Viteがserve中に処理した、または`types: true`でbuildした`@block`付きCSS Moduleには、`Card.module.css.d.ts`を生成します。宣言に含めるのはclass keyだけです。TypeScriptでは、安定したclass APIを補完でき、存在しないkeyを検出できます。
 
 生成された`.d.ts`はCSS Moduleの隣に置かれます。このファイルはCSSから作られる派生ファイルですが、v0.1では利用者のプロジェクトでコミットする運用を推奨します。コミットしておけば、clone直後でもエディタと`tsc`が公開キーの辞書を読めます。`.d.ts`は手編集せず、元のCSSを変更したときに再生成してください。
 
@@ -278,10 +281,11 @@ Viteのbuild lifecycleに型生成を組み込みたい場合は、`types: true`
 ```ts
 // vite.types.config.ts
 import { defineConfig } from "vite";
-import bemModules from "vite-plugin-bem-modules";
+import bemModules, { createBemPostcssPlugin } from "vite-plugin-bem-modules";
 
 export default defineConfig({
   plugins: [bemModules({ types: true, project: { include: ["src"] } })],
+  css: { postcss: { plugins: [createBemPostcssPlugin()] } },
   build: {
     outDir: ".typegen-dist",
     lib: {
@@ -312,10 +316,11 @@ JavaScriptプロジェクトなどで型宣言が不要な場合は、`types: fa
 ```js
 // vite.config.js
 import { defineConfig } from "vite";
-import bemModules from "vite-plugin-bem-modules";
+import bemModules, { createBemPostcssPlugin } from "vite-plugin-bem-modules";
 
 export default defineConfig({
   plugins: [bemModules({ types: false })],
+  css: { postcss: { plugins: [createBemPostcssPlugin()] } },
 });
 ```
 
@@ -330,8 +335,9 @@ Project検査と型宣言同期の対象は、Viteのimport状態ではなく、
 - `node_modules`、`.git`、`dist`など既定で無視するdirectoryは、importしてもProjectの検査・型同期の対象になりません。必要なfile / directoryは`include`で明示できます。その場合も、配下の無視directoryは個別の明示が必要です。
 
 ```ts
-import bemModules from "vite-plugin-bem-modules";
+import bemModules, { createBemPostcssPlugin } from "vite-plugin-bem-modules";
 
+// Vite configには、上のPostCSS登録も残します。
 bemModules({
   project: {
     include: ["src", "/workspace/shared/blocks"],
@@ -340,9 +346,9 @@ bemModules({
 });
 ```
 
-Project scopeにあるCSS ModuleはimportされていなくてもBlock名・生成class名の一意性検査に含まれます。これにより検査結果がentryやmodule graphで変わりません。
+`project.include` / `project.exclude`は、importされていないModuleも含めた`check` / `sync`の明示範囲を決めます。v0.2ではProject全体のBlock名・生成class名の一意性検査を行いません。
 
-Vite起動時の全体走査を別の工程へ委ねる統合では、`project.startup: "defer"`を指定できます。この設定は`buildStart`でのProject全体の検査・型同期だけを延期し、Viteから到達したCSS Moduleの変換、HMR、増分一意性検査は維持します。既定の`"scan"`は起動時に明示scope全体を検査・同期します。
+Vite起動時の全体処理を別の工程へ委ねる統合では、`project.startup: "defer"`を指定できます。この設定は`buildStart`での明示scope全体の`check` / `sync`を延期し、Viteから到達したCSS Moduleの変換とHMRは維持します。既定の`"scan"`では明示scopeを起動時処理に利用します。
 
 ```ts
 bemModules({
@@ -369,11 +375,14 @@ export default {
 ```js
 // vite.config.mjs
 import { defineConfig } from "vite";
-import bemModules, { defineBemModulesConfig } from "vite-plugin-bem-modules";
+import bemModules, { createBemPostcssPlugin, defineBemModulesConfig } from "vite-plugin-bem-modules";
 import bemConfig from "./bem-modules.config.mjs";
 
 const config = defineBemModulesConfig(bemConfig);
-export default defineConfig({ plugins: [bemModules(config)] });
+export default defineConfig({
+  plugins: [bemModules(config)],
+  css: { postcss: { plugins: [createBemPostcssPlugin()] } },
+});
 ```
 
 ```json
@@ -416,7 +425,7 @@ bemModules({
 
 このファイルにはBEM変換やBEM用の`.d.ts`生成は適用されません。BEMを使うファイルだけに`@block`を付けてください。
 
-BEM対象のlocal classは最終BEM名の`:global(...)`として出力されるため、CSS Modulesのhashによるscope隔離は適用されません。Block名と生成class名はProject scope内で一意である必要があります。
+BEM対象のlocal classは最終BEM名の`:global(...)`として出力されるため、CSS Modulesのhashによるscope隔離は適用されません。名前が衝突した場合は、ブラウザの通常のcascadeとanimationの規則に従います。
 
 ## 対応範囲と注意点
 
@@ -427,10 +436,10 @@ BEM対象のlocal classは最終BEM名の`:global(...)`として出力される�
 - CSS Modulesの`composes`は対応していません。
 - BEM対象のselectorは、`.root--compact`のようにclass名を完全に静的に書いてください。Sassの`&--modifier`、`#{...}`を含むselector、`@at-root`構文は、lowering対象を確定できないため`BEM005`で拒否します。宣言値のSass補間と、明示的なselectorを使う通常のnestingは許可します。
 - BEM対象ではSassの`@extend`に対応していません。source内の`@extend`は`!optional`やplaceholder宛ても`BEM005`になります。外部partialやmixin内部の`@extend`までは検出しないため、それらを経由する場合も使用しないでください。宣言の共有には、selector継承を行わないmixinを使えます。
-- Sassのpartialやmixinが宣言していないlocal classをBEM対象のCSS Moduleから出力すると、`BEM009`になります。共有helper classは`:global(.sharedHelper)`として明示するか、BEM対象のCSS Moduleの外へ分離してください。
+- Sassのpartialやmixinが出力する静的なlocal classも、管理対象Moduleのclassとして処理します。BEM class APIの外へ置く共有helper classは、`:global(.sharedHelper)`として明示してください。
 - BEM対象のCSS Moduleでは、`?raw`、`?inline`、`?url`は使えません。
 - `css.modules: false`では、BEM変換・query検査・Project検査・型同期を行いません。queryの対応範囲はViteの標準処理に従います。
-- `css.modules.localsConvention`で`camelCaseOnly`や`dashesOnly`のようにBEM APIのclass keyを削る設定は、`BEM009`で拒否します。`camelCase`や`dashes`のように追加aliasを残す設定は利用できます。
+- `css.modules.localsConvention`などのCSS Modules export設定はViteへ委譲します。プラグインの型宣言は自身のclass keyだけを含み、追加runtime aliasは安定した型契約に含めません。
 - `css.transformer: "lightningcss"`には対応していません。Vite標準のCSS Modules変換を使用してください。
 
 ### 診断コード
@@ -439,13 +448,14 @@ BEM対象のlocal classは最終BEM名の`:global(...)`として出力される�
 | --- | --- |
 | `BEM001` | `@block`コメントのBlock名が空、または不正 |
 | `BEM002` | 1つのCSS Moduleに`@block`が複数ある |
-| `BEM003` | class名、Modifier、Block、生成class名の規則違反または衝突 |
+| `BEM003` | class名、Modifier、Blockの命名規則違反 |
 | `BEM004` | 設定値またはCSS transformerが対応範囲外 |
 | `BEM005` | Sassの動的selectorまたは非対応の`@extend`を検出 |
 | `BEM006` | 隣接`.d.ts`がプラグイン所有ではない |
 | `BEM007` | CSS Modulesの`composes`が使われている |
 | `BEM008` | BEM対象に`?raw` / `?inline` / `?url`が付いている |
-| `BEM009` | Viteの最終CSS Module exportがschemaと一致しない |
+| `BEM010` | `css.postcss.plugins`にBEM PostCSS pluginが登録されていない |
+| `BEM011` | CSS Modulesで未対応のLightning CSS transformerが有効 |
 
 ## ライセンス
 

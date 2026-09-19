@@ -28,14 +28,14 @@ function createProject(
   });
 }
 
-test("Project checkはimport状態に関係なく明示範囲全体の衝突を検査する", async () => {
+test("Project checkはimport状態に関係なく明示範囲全体を解析する", async () => {
   const root = await makeProject();
   try {
     await fs.writeFile(path.join(root, "A.module.css"), "/* @block card */ .root {}", "utf8");
     await fs.writeFile(path.join(root, "B.module.css"), "/* @block card */ .root {}", "utf8");
     const project = createProject(root);
 
-    await assert.rejects(() => project.check(), /Block names must be unique across CSS Modules/);
+    assert.equal((await project.check()).length, 2);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -210,7 +210,7 @@ test("Project syncは単一file includeのsource削除後も隣接d.tsを掃除�
   }
 });
 
-test("Projectは並行compileでも一意性を維持し、失敗後の更新を処理できる", async () => {
+test("Projectは並行compileでも同名Blockを許容し、更新を処理できる", async () => {
   const parent = await makeProject("bem-modules-project-concurrent-");
   try {
     for (const mode of ["ignore", "generate", "remove"] as const) {
@@ -221,16 +221,14 @@ test("Projectは並行compileでも一意性を維持し、失敗後の更新を
       const results = await Promise.allSettled(files.map((file) =>
         project.compile(file, "/* @block shared */ .root {}"),
       ));
-      assert.equal(results.filter((result) => result.status === "fulfilled").length, 1, mode);
-      const failedIndex = results.findIndex((result) => result.status === "rejected");
-      const failed = results[failedIndex] as PromiseRejectedResult;
-      assert.match(String(failed.reason), /BEM003/);
-      assert.equal(project.getSchemas().length, 1);
+      assert.equal(results.filter((result) => result.status === "fulfilled").length, 2, mode);
+      assert.equal(results.filter((result) => result.status === "rejected").length, 0, mode);
+      assert.equal(project.getSchemas().length, 2);
 
-      await project.compile(files[failedIndex]!, "/* @block other */ .root {} .root--large {}");
+      await project.compile(files[0]!, "/* @block other */ .root {} .root--large {}");
       assert.equal(project.getSchemas().length, 2);
       if (mode === "generate") {
-        assert.match(await fs.readFile(`${files[failedIndex]}.d.ts`, "utf8"), /rootLarge/);
+        assert.match(await fs.readFile(`${files[0]}.d.ts`, "utf8"), /rootLarge/);
       }
     }
   } finally {

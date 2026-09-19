@@ -167,16 +167,18 @@ styles.profileImageRounded; // "p-card__profileImage--rounded"
 
 ## 5. 製品実装前に決める項目
 
-隔離試作で変換経路、型生成、警告台帳、HMRは成立した。次の項目は公開APIと移行方法に関わるため、製品実装で値を固定する前に決める。
+隔離試作で変換経路、型生成、警告台帳、HMRは成立した。製品実装では、次の判断を v0.2 初期 API として固定する。
 
 ### 5.1 設定APIとv0.1からの移行
 
-- `wordCase`、Element separator、Modifier separator、`modifierOutput`を、現行名のまま残すか整理するか。
-- `globalScope.exact` / `prefix`を残すか、CSS標準の`:global`へ一本化するか。
-- 一意性検査を廃止した後も、`project.include` / `exclude` / `startup`を明示同期の対象指定として残すか。
-- `bem-modules check`を廃止するか、構文検査と衝突情報を返すコマンドへ変更するか。
-- Vite plugin factoryとPostCSS plugin factoryをpackage rootからどの名前で公開するか。
-- v0.1とv0.2を同じpackageのmajor未満更新として公開する場合に、破壊的差分をどの移行案内で示すか。
+- `naming.wordCase`、`naming.elementSeparator`、`naming.modifierSeparator`、`modifierOutput`、`types`、`project` は v0.1 の名前を維持する。これらは既存設定の移行負担が小さく、Vite への委譲とも衝突しない。
+- `globalScope.exact` / `prefix` も互換設定として維持する。ただし新規コードでは CSS 標準の `:global(...)` を推奨し、設定による追加 alias は class-only API に増やさない。`root` は従来どおり Block として扱う。
+- Project-wide の一意性検査は廃止する。`project.include` / `exclude` / `startup` は、未import Moduleを含む明示的な `check` / `sync` と、必要な起動時走査の範囲指定として残す。
+- `bem-modules check` と `bem-modules sync` は残す。`check` は class 構文と設定の検査、`sync` は同じ範囲の class-only 隣接型の同期を担当し、keyframes の Vite 警告台帳を CLI の永続状態にはしない。
+- package root の公開 factory は既定 export `bemModules`、`createBemPostcssPlugin`、`defineBemModulesConfig` とする。Compiler / Project / keyframes registry は内部 API とし、実 consumer が現れるまで公開しない。
+- v0.1 からの移行案内では、ID・keyframes・`@value`・任意の ICSS `:export` key の型/APIが消えること、PostCSS plugin の明示登録が必要なこと、Project-wide 一意性検査がなくなることを破壊的差分として明記する。
+
+この判断は、既存設定をできるだけそのまま使えること、Sass・PostCSS・CSS Modules・HMRを Vite に委譲できること、そして公開面に低レベル状態を漏らさないことを優先したものである。
 
 ### 5.2 観測範囲
 
@@ -187,10 +189,11 @@ styles.profileImageRounded; // "p-card__profileImage--rounded"
 
 ### 5.3 Vite設定との共存
 
-- 利用者が`css.modules.generateScopedName`、`localsConvention`、`exportGlobals`を設定したときに、管理対象classのglobal outputとclass APIをどのように両立させるか。
-- PostCSS pluginの登録検出を、CJS / ESM、関数plugin、plugin factory、配列のwrapperに対してどう定義するか。
-- `css.postcss.plugins`の明示順序がSass展開後の期待する変換順になることを、どの組み合わせで保証するか。
-- Viteのdefault PostCSS transformer以外、特に`css.transformer: "lightningcss"`を対象外として明示するか、別経路で対応するか。
+- `css.modules.generateScopedName` は管理対象 Moduleのglobal class名と両立しないため、管理対象では plugin が生成した `:export` の値を正本にする。通常 Moduleへの Vite 標準設定は変更しない。
+- `localsConvention` と `exportGlobals` は Vite に委譲する。plugin が保証する型は、自身の class 対応表から得られる keyだけであり、追加 alias や global classの runtime exportは Vite設定の結果として扱う。
+- 登録検出は、`createBemPostcssPlugin()`が返す marker付き PostCSS pluginを、解決済み `css.postcss.plugins` の配列から探す。配列の wrapperを暗黙に展開したり、他の関数を実行して推測したりしない。見つからなければ config 解決時に `BEM010` で停止する。
+- `css.postcss.plugins` の順序をそのまま使用する。BEM pluginの自動挿入・二重実行・外部設定の再構成は行わない。
+- Viteの default PostCSS transformerだけを初期対象とし、`css.transformer: "lightningcss"` は `BEM011` で明示的に対象外とする。
 
 ## 6. 製品実装の受け入れ条件
 

@@ -15,6 +15,8 @@ export function defineBemModulesConfig(options: BemModulesOptions): BemModulesOp
   return options;
 }
 
+export { createBemPostcssPlugin } from "./postcss.js";
+
 export default function bemModules(options: BemModulesOptions = {}): PluginOption {
   const runtime = createBemRuntime(options);
 
@@ -43,14 +45,19 @@ export default function bemModules(options: BemModulesOptions = {}): PluginOptio
 
     async resolveId(source, importer) {
       if (!runtime.isActive()) return null;
-      const nonModuleQuery = getNonModuleQuery(source);
-      if (!nonModuleQuery || !importer || isVirtualModule(source)) return null;
+      if (!importer || isVirtualModule(source)) return null;
       const resolved = await this.resolve(source, importer, { skipSelf: true });
       const resolvedId = typeof resolved === "string" ? resolved : resolved?.id;
       if (!resolvedId || !isModuleFile(resolvedId) || isInNodeModules(resolvedId) || isVirtualModule(resolvedId)) {
         return null;
       }
       const cleanId = stripQuery(resolvedId);
+      if (source.startsWith("virtual:") || source.startsWith("virtual/")) {
+        runtime.ignoreVirtualCssModule(cleanId);
+        return null;
+      }
+      const nonModuleQuery = getNonModuleQuery(source);
+      if (!nonModuleQuery) return null;
       if (await runtime.isOwnedCssModule(cleanId)) {
         throw unsupportedCssModuleQueryError(cleanId, nonModuleQuery);
       }

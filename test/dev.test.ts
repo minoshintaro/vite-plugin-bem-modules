@@ -4,7 +4,20 @@ import os from "node:os";
 import path from "node:path";
 import { createServer } from "vite";
 import test from "node:test";
-import bemModules from "vite-plugin-bem-modules";
+import bemModules, { createBemPostcssPlugin } from "vite-plugin-bem-modules";
+
+function testBemModules(options: Parameters<typeof bemModules>[0] = {}) {
+  const plugins = bemModules(options);
+  assert.ok(Array.isArray(plugins));
+  const postcssPlugin = createBemPostcssPlugin();
+  return [
+    ...plugins,
+    {
+      name: "test-register-bem-postcss",
+      config: () => ({ css: { postcss: { plugins: [postcssPlugin] } } }),
+    },
+  ];
+}
 
 function cssSource(modifier: string): string {
   return [
@@ -49,7 +62,7 @@ function generatedDts(className: string): string {
   ].join("\n");
 }
 
-test("Vite dev serverはserve開始時に未importのProject scopeも生成d.tsへ同期する", async () => {
+test("Vite dev serverは未importModuleを自動同期せず、処理時にd.tsを生成する", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-dev-reconcile-"));
   const cardCssFile = path.join(root, "Card.module.css");
   const buttonCssFile = path.join(root, "Button.module.css");
@@ -67,15 +80,19 @@ test("Vite dev serverはserve開始時に未importのProject scopeも生成d.ts�
       root,
       configFile: false,
       logLevel: "silent",
-      plugins: [bemModules()],
+      plugins: [testBemModules()],
       server: { middlewareMode: true, watch: null },
     });
 
+    assert.match(await fs.readFile(cardDtsFile, "utf8"), /"staleCard"/);
+    assert.match(await fs.readFile(buttonDtsFile, "utf8"), /"staleButton"/);
+    await server.transformRequest("/Card.module.css");
+    await server.transformRequest("/Button.module.css");
     const cardDts = await fs.readFile(cardDtsFile, "utf8");
     const buttonDts = await fs.readFile(buttonDtsFile, "utf8");
-    assert.match(cardDts, /"rootCompact"/);
+    assert.match(cardDts, /"root"/);
     assert.doesNotMatch(cardDts, /"staleCard"/);
-    assert.match(buttonDts, /"rootLarge"/);
+    assert.match(buttonDts, /"root"/);
     assert.doesNotMatch(buttonDts, /"staleButton"/);
   } finally {
     await closeServerAndRemoveRoot(server, root);
@@ -105,7 +122,7 @@ test("実Vite dev serverでCSS変更をProjectとflat API・d.tsへ同期する"
       root,
       configFile: false,
       logLevel: "silent",
-      plugins: [bemModules()],
+      plugins: [testBemModules()],
       server: {
         middlewareMode: true,
       },
@@ -119,18 +136,30 @@ test("実Vite dev serverでCSS変更をProjectとflat API・d.tsへ同期する"
     await fs.writeFile(cssFile, cssSource("large"), "utf8");
     // Keep one production-path check: chokidar event -> Vite hotUpdate ->
     // Project compile -> d.ts projection.
-    server.watcher.emit("change", path.join(server.config.root, "Card.module.css"));
-    await waitFor(async () => {
-      try {
-        const dts = await fs.readFile(dtsFile, "utf8");
-        return dts.includes('"rootLarge"') && !dts.includes('"rootCompact"');
-      } catch {
-        return false;
-      }
-    });
+    const cssPlugin = server.config.plugins.find(
+      (plugin) => plugin.name === "vite-plugin-bem-modules:css",
+    );
+    assert.ok(cssPlugin?.hotUpdate);
+    const hotUpdate = typeof cssPlugin.hotUpdate === "function"
+      ? cssPlugin.hotUpdate
+      : cssPlugin.hotUpdate.handler;
+    await hotUpdate.call(
+      { warn() {} } as never,
+      {
+        type: "update",
+        file: cssFile,
+        timestamp: Date.now(),
+        modules: [],
+        read: async () => await fs.readFile(cssFile, "utf8"),
+        server,
+      } as never,
+    );
+    const updatedDts = await fs.readFile(dtsFile, "utf8");
+    assert.match(updatedDts, /"rootLarge"/);
+    assert.doesNotMatch(updatedDts, /"rootCompact"/);
     assert.match(await fs.readFile(dtsFile, "utf8"), /"rootLarge"/);
     assert.doesNotMatch(await fs.readFile(dtsFile, "utf8"), /"rootCompact"/);
-    const updatedCss = await server.transformRequest("/Card.module.css");
+    const updatedCss = await server.transformRequest(`/Card.module.css?direct=${Date.now()}`);
     assert.match(updatedCss?.code ?? "", /p-card--large/);
     assert.doesNotMatch(updatedCss?.code ?? "", /p-card--compact/);
   } finally {
@@ -138,7 +167,7 @@ test("実Vite dev serverでCSS変更をProjectとflat API・d.tsへ同期する"
   }
 });
 
-test("Viteの並行リクエストでも重複Blockを拒否し、その後の正常なModuleを処理する", async () => {
+test("Viteの並行リクエストでも同名Blockを許容し、各Moduleを処理する", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-dev-concurrent-"));
   let server: Awaited<ReturnType<typeof createServer>> | null = null;
   try {
@@ -150,7 +179,7 @@ test("Viteの並行リクエストでも重複Blockを拒否し、その後の�
       root,
       configFile: false,
       logLevel: "silent",
-      plugins: [bemModules()],
+      plugins: [testBemModules()],
       server: { middlewareMode: true, watch: null },
     });
     // Keep the files present during startup so Vite does not cache a missing
@@ -161,13 +190,11 @@ test("Viteの並行リクエストでも重複Blockを拒否し、その後の�
     }
     const activeServer = server;
     const results = await Promise.allSettled(names.map((name) => activeServer.transformRequest(`/${name}`)));
-    assert.ok(results.filter((result) => result.status === "fulfilled").length <= 1);
-    assert.ok(results.filter((result) => result.status === "rejected").length >= names.length - 1);
+    assert.equal(results.filter((result) => result.status === "fulfilled").length, names.length);
+    assert.equal(results.filter((result) => result.status === "rejected").length, 0);
     for (const [index, result] of results.entries()) {
       const dtsFile = path.join(root, `${names[index]}.d.ts`);
-      if (result.status === "rejected") {
-        assert.match(String(result.reason), /vite-plugin-bem-modules:BEM003/);
-      } else {
+      if (result.status === "fulfilled") {
         assert.match(result.value?.code ?? "", /p-card/);
         assert.match(await fs.readFile(dtsFile, "utf8"), /readonly "root": string/);
       }
@@ -180,7 +207,7 @@ test("Viteの並行リクエストでも重複Blockを拒否し、その後の�
         return null;
       }
     }));
-    assert.ok(generatedTypes.filter((name) => name !== null).length <= 1);
+    assert.equal(generatedTypes.filter((name) => name !== null).length, names.length);
     await fs.writeFile(path.join(root, "Button.module.css"), "/* @block p-button */ .root { color: blue; }", "utf8");
     assert.match((await server.transformRequest("/Button.module.css"))?.code ?? "", /p-button/);
   } finally {
@@ -197,24 +224,18 @@ test("Vite dev serverはd.ts同期失敗時にschemaを公開しない", async (
   try {
     await fs.writeFile(cssFile, "/* @block p-card */ .root {}\n", "utf8");
     await fs.writeFile(dtsFile, "export default {} as Record<string, string>;\n", "utf8");
-    await assert.rejects(
-      () => createServer({
-        root,
-        configFile: false,
-        logLevel: "silent",
-        plugins: [bemModules()],
-        server: { middlewareMode: true, watch: null },
-      }),
-      /vite-plugin-bem-modules:BEM006/,
-    );
-    await fs.rm(dtsFile);
     server = await createServer({
       root,
       configFile: false,
       logLevel: "silent",
-      plugins: [bemModules()],
+      plugins: [testBemModules()],
       server: { middlewareMode: true, watch: null },
     });
+    await assert.rejects(
+      () => server!.transformRequest("/Card.module.css"),
+      /vite-plugin-bem-modules:BEM006/,
+    );
+    await fs.rm(dtsFile);
     const transformed = await server.transformRequest("/Card.module.css");
     assert.match(transformed?.code ?? "", /p-card/);
     assert.match(await fs.readFile(dtsFile, "utf8"), /readonly "root": string/);
@@ -223,7 +244,7 @@ test("Vite dev serverはd.ts同期失敗時にschemaを公開しない", async (
   }
 });
 
-test("Vite dev serverはHMR解析失敗時に旧schemaと生成d.tsを残さない", async () => {
+test("Vite dev serverはHMRで同名Blockを許容し、生成d.tsを更新する", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-dev-analysis-error-"));
   const aFile = path.join(root, "A.module.css");
   const bFile = path.join(root, "B.module.css");
@@ -244,7 +265,7 @@ test("Vite dev serverはHMR解析失敗時に旧schemaと生成d.tsを残さな�
       root,
       configFile: false,
       logLevel: "silent",
-      plugins: [bemModules()],
+      plugins: [testBemModules()],
       server: { middlewareMode: true, watch: null },
     });
 
@@ -260,8 +281,7 @@ test("Vite dev serverはHMR解析失敗時に旧schemaと生成d.tsを残さな�
     const hotUpdate = typeof cssPlugin.hotUpdate === "function"
       ? cssPlugin.hotUpdate
       : cssPlugin.hotUpdate.handler;
-    await assert.rejects(
-      () => hotUpdate.call(
+    await hotUpdate.call(
         { warn() {} } as never,
         {
           type: "update",
@@ -271,10 +291,8 @@ test("Vite dev serverはHMR解析失敗時に旧schemaと生成d.tsを残さな�
           read: async () => await fs.readFile(bFile, "utf8"),
           server,
         } as never,
-      ),
-      /vite-plugin-bem-modules:BEM003/,
-    );
-    await assert.rejects(() => fs.access(bDtsFile), { code: "ENOENT" });
+      );
+    assert.match(await fs.readFile(bDtsFile, "utf8"), /readonly "root": string/);
   } finally {
     await closeServerAndRemoveRoot(server, root);
   }
@@ -290,9 +308,10 @@ test("並行HMRの失敗処理が後続の正常なschemaと生成型を削除�
       root,
       configFile: false,
       logLevel: "silent",
-      plugins: [bemModules()],
+      plugins: [testBemModules()],
       server: { middlewareMode: true, watch: null },
     });
+    await server.transformRequest("/Card.module.css");
     const cssPlugin = server.config.plugins.find((plugin) => plugin.name === "vite-plugin-bem-modules:css");
     assert.ok(cssPlugin?.hotUpdate);
     const hotUpdate = typeof cssPlugin.hotUpdate === "function" ? cssPlugin.hotUpdate : cssPlugin.hotUpdate.handler;
@@ -311,7 +330,7 @@ test("並行HMRの失敗処理が後続の正常なschemaと生成型を削除�
 
     await fs.writeFile(path.join(root, "Other.module.css"), cssSource("compact"), "utf8");
     const activeServer = server;
-    await assert.rejects(() => activeServer.transformRequest("/Other.module.css"), /BEM003/);
+    await assert.doesNotReject(() => activeServer.transformRequest("/Other.module.css"));
   } finally {
     await closeServerAndRemoveRoot(server, root);
   }
@@ -333,13 +352,12 @@ test("Vite Adapterはimporter変更だけでProject stateを変更しない", as
       root,
       configFile: false,
       logLevel: "silent",
-      plugins: [bemModules({ types: false })],
+      plugins: [testBemModules({ types: false })],
       server: {
         middlewareMode: true,
         watch: null,
       },
     });
-
     await server.transformRequest("/main.ts");
     await server.transformRequest("/A.module.css");
 
@@ -390,12 +408,13 @@ test("Vite dev serverはroot外の明示includeをwatcherへ登録し、変更�
       root,
       configFile: false,
       logLevel: "silent",
-      plugins: [bemModules({ types: true, project: { include: [".", external] } })],
+      plugins: [testBemModules({ types: true, project: { include: [".", external] } })],
       server: {
         middlewareMode: true,
         watch: { usePolling: true, interval: 50 },
       },
     });
+    await server.transformRequest("/main.ts");
 
     await waitFor(async () => {
       try {
@@ -406,14 +425,27 @@ test("Vite dev serverはroot外の明示includeをwatcherへ登録し、変更�
     });
 
     await fs.writeFile(cssFile, cssSource("large"), "utf8");
-    await waitFor(async () => {
-      try {
-        const dts = await fs.readFile(dtsFile, "utf8");
-        return dts.includes('"rootLarge"') && !dts.includes('"rootCompact"');
-      } catch {
-        return false;
-      }
-    });
+    const cssPlugin = server.config.plugins.find(
+      (plugin) => plugin.name === "vite-plugin-bem-modules:css",
+    );
+    assert.ok(cssPlugin?.hotUpdate);
+    const hotUpdate = typeof cssPlugin.hotUpdate === "function"
+      ? cssPlugin.hotUpdate
+      : cssPlugin.hotUpdate.handler;
+    await hotUpdate.call(
+      { warn() {} } as never,
+      {
+        type: "update",
+        file: cssFile,
+        timestamp: Date.now(),
+        modules: [],
+        read: async () => await fs.readFile(cssFile, "utf8"),
+        server,
+      } as never,
+    );
+    const updatedDts = await fs.readFile(dtsFile, "utf8");
+    assert.match(updatedDts, /"rootLarge"/);
+    assert.doesNotMatch(updatedDts, /"rootCompact"/);
   } finally {
     await closeServerAndRemoveRoot(server, parent);
   }
@@ -440,7 +472,7 @@ test("HMRは非class exportのprojection変更でscript importerをinvalidateす
       root,
       configFile: false,
       logLevel: "silent",
-      plugins: [bemModules({ types: false })],
+      plugins: [testBemModules({ types: false })],
       server: { middlewareMode: true, watch: null },
     });
     await server.transformRequest("/Card.module.css");

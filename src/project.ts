@@ -1,10 +1,14 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 import { compileBemModule, type CompileBemModuleResult } from "./compiler.js";
-import { createBemDiagnosticError } from "./diagnostics.js";
 import { collectAdjacentDtsFiles, collectModuleFiles, isProjectFileInScope } from "./files.js";
-import { GENERATED_DTS_HEADER, renderDts, resolveDtsPath } from "./dts.js";
+import {
+  GENERATED_DTS_HEADER,
+  removeGeneratedDts,
+  renderDts,
+  resolveDtsPath,
+  writeGeneratedDts,
+} from "./dts.js";
 import type {
   BemModuleSchema,
   ResolvedBemCompilerOptions,
@@ -52,94 +56,11 @@ async function readModuleSource(filePath: string): Promise<string | null> {
   }
 }
 
-function unownedDtsError(filePath: string): Error {
-  return createBemDiagnosticError(
-    "BEM006",
-    "the adjacent CSS Module declaration file is not owned by the plugin.",
-    {
-      file: filePath,
-      details: ["only plugin-generated regular files can be replaced; move hand-written files or symbolic links before enabling generated declarations."],
-    },
-  );
-}
-
-async function writeGeneratedDts(filePath: string, content: string): Promise<void> {
-  let mode: number | undefined;
-  try {
-    const stats = await fs.lstat(filePath);
-    if (!stats.isFile()) throw unownedDtsError(filePath);
-    const existing = await fs.readFile(filePath, "utf8");
-    if (!existing.startsWith(GENERATED_DTS_HEADER)) throw unownedDtsError(filePath);
-    if (existing === content) return;
-    mode = stats.mode;
-  } catch (error) {
-    if (!isMissingFileError(error)) throw error;
-  }
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  const temporary = path.join(path.dirname(filePath), `.bem-modules-${randomUUID()}.tmp`);
-  const handle = await fs.open(temporary, "wx", mode);
-  try {
-    try {
-      await handle.writeFile(content, "utf8");
-    } finally {
-      await handle.close();
-    }
-    // Replace this directory entry instead of writing through a hardlink or
-    // a symlink substituted after the ownership check.
-    await fs.rename(temporary, filePath);
-  } finally {
-    await fs.unlink(temporary).catch((error: unknown) => {
-      if (!isMissingFileError(error)) throw error;
-    });
-  }
-}
-
-async function removeGeneratedDts(filePath: string): Promise<void> {
-  try {
-    if (!(await fs.lstat(filePath)).isFile()) return;
-    const existing = await fs.readFile(filePath, "utf8");
-    if (!existing.startsWith(GENERATED_DTS_HEADER)) return;
-    await fs.unlink(filePath);
-  } catch (error) {
-    if (!isMissingFileError(error)) throw error;
-  }
-}
-
 export function validateProjectSchemas(schemas: readonly BemModuleSchema[]): void {
-  const blockOwners = new Map<string, string>();
-  const outputOwners = new Map<string, { filePath: string; apiName: string }>();
-  for (const schema of schemas) {
-    const previous = blockOwners.get(schema.blockName);
-    if (previous && previous !== schema.filePath) {
-      throw createBemDiagnosticError("BEM003", "Block names must be unique across CSS Modules.", {
-        file: schema.filePath,
-        details: [
-          `block: ${schema.blockName}`,
-          `existing file: ${previous}`,
-          "adjust project.include or project.exclude to define the intended source scope.",
-        ],
-      });
-    }
-    blockOwners.set(schema.blockName, schema.filePath);
-
-    for (const classInfo of schema.classes) {
-      const { apiName, outputName } = classInfo;
-      const previousOutput = outputOwners.get(outputName);
-      if (previousOutput && previousOutput.filePath !== schema.filePath) {
-        throw createBemDiagnosticError("BEM003", "Generated class names must be unique across CSS Modules.", {
-          file: schema.filePath,
-          details: [
-            `class: ${outputName}`,
-            `existing file: ${previousOutput.filePath}`,
-            `existing key: ${previousOutput.apiName}`,
-            `key: ${apiName}`,
-            "adjust project.include or project.exclude to define the intended source scope.",
-          ],
-        });
-      }
-      if (!previousOutput) outputOwners.set(outputName, { filePath: schema.filePath, apiName });
-    }
-  }
+  // v0.2 intentionally permits global BEM names to collide across Modules.
+  // The browser's normal CSS cascade, rather than a project-wide index, owns
+  // the meaning of those collisions.
+  void schemas;
 }
 
 function schemaValues(schemas: Map<string, BemModuleSchema>): BemModuleSchema[] {

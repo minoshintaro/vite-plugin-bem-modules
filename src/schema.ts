@@ -2,6 +2,7 @@ import path from "node:path";
 import postcss, { type Comment, type Root, type Rule } from "postcss";
 import postcssScss from "postcss-scss";
 import selectorParser, { type Node as SelectorNode } from "postcss-selector-parser";
+import { globalizeAnimationValue } from "./animation-value-parser.js";
 import { createBemDiagnosticError } from "./diagnostics.js";
 import { isBemGlobalClassName } from "./global-scope.js";
 import type {
@@ -251,6 +252,12 @@ function classSelector(value: string): SelectorNode {
   return node;
 }
 
+function idSelector(value: string): SelectorNode {
+  const node = selectorParser.id({ value: "" });
+  node.value = value;
+  return node;
+}
+
 function escapeCssIdentifier(value: string): string {
   return classSelector(value).toString().slice(1);
 }
@@ -280,11 +287,15 @@ export function unescapeCssIdentifier(value: string): string {
   return unescaped;
 }
 
-function globalClassSelector(value: string): SelectorNode {
+function globalSelector(node: SelectorNode): SelectorNode {
   return selectorParser.pseudo({
     value: ":global",
-    nodes: [selectorParser.selector({ value: "", nodes: [classSelector(value)] })],
+    nodes: [selectorParser.selector({ value: "", nodes: [node] })],
   });
+}
+
+function globalClassSelector(value: string): SelectorNode {
+  return globalSelector(classSelector(value));
 }
 
 function lowerSelectorNodes(
@@ -323,10 +334,39 @@ function lowerSelectorNodes(
           : classSelector(outputName));
       }
     }
+    if (node.type === "id" && mode === "local") {
+      node.replaceWith(globalSelector(idSelector(node.value)));
+    }
     if (isSelectorContainer<SelectorNode[]>(node)) {
       lowerSelectorNodes(node.nodes, schema, mode, wrapMappedClasses);
     }
   }
+}
+
+const KEYFRAMES_AT_RULE = /keyframes$/i;
+const CSS_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+
+export function collectKeyframeNames(root: Root): string[] {
+  const names = new Set<string>();
+  root.walkAtRules((atRule) => {
+    if (!KEYFRAMES_AT_RULE.test(atRule.name)) return;
+    const name = atRule.params.trim().split(/\s+/, 1)[0] ?? "";
+    if (CSS_IDENTIFIER.test(name)) names.add(name);
+  });
+  return [...names].sort();
+}
+
+function lowerKeyframesAndAnimation(root: Root): void {
+  root.walkAtRules((atRule) => {
+    if (!KEYFRAMES_AT_RULE.test(atRule.name)) return;
+    const name = atRule.params.trim().split(/\s+/, 1)[0] ?? "";
+    if (CSS_IDENTIFIER.test(name)) atRule.params = `:global(${name})`;
+  });
+  root.walkDecls((declaration) => {
+    if (declaration.prop === "animation" || declaration.prop === "animation-name") {
+      declaration.value = globalizeAnimationValue(declaration.value, declaration.prop);
+    }
+  });
 }
 
 function lowerSelectors(root: Root, schema: BemModuleSchema): void {
@@ -357,11 +397,22 @@ function appendExportMap(root: Root, schema: BemModuleSchema): void {
   root.append(exportRule);
 }
 
-function lowerParsedModuleSource(filePath: string, root: Root, schema: BemModuleSchema): string {
+export function lowerParsedModuleRoot(filePath: string, root: Root, schema: BemModuleSchema): void {
   readBlockComment(root, filePath).comment.remove();
+  lowerKeyframesAndAnimation(root);
   lowerSelectors(root, schema);
   appendExportMap(root, schema);
-  return root.toString();
+}
+
+export function analyzeAndLowerParsedModuleIfOwned(
+  filePath: string,
+  root: Root,
+  options: ResolvedBemCompilerOptions,
+): BemModuleSchema | null {
+  if (collectBlockComments(root).length === 0) return null;
+  const schema = analyzeParsedModule(filePath, root, options);
+  lowerParsedModuleRoot(filePath, root, schema);
+  return schema;
 }
 
 export function analyzeAndLowerModuleSourceIfOwned(
@@ -371,8 +422,9 @@ export function analyzeAndLowerModuleSourceIfOwned(
 ): { schema: BemModuleSchema; loweredSource: string } | null {
   const root = parseModuleSourceIfOwned(filePath, source);
   if (!root) return null;
-  const schema = analyzeParsedModule(filePath, root, options);
-  return { schema, loweredSource: lowerParsedModuleSource(filePath, root, schema) };
+  const schema = analyzeAndLowerParsedModuleIfOwned(filePath, root, options);
+  if (!schema) return null;
+  return { schema, loweredSource: root.toString() };
 }
 
 function collectClassNames(root: Root): { localNames: Set<string>; explicitGlobalNames: Set<string> } {

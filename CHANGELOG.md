@@ -2,6 +2,13 @@
 
 このファイルには、利用者に影響する変更を記録します。
 
+## 0.2.0 - Unreleased
+
+- `css.postcss.plugins`へ`createBemPostcssPlugin()`を明示登録するAST変換経路へ変更する。
+- runtime class mapと一致するclass-only隣接型を生成する。
+- IDとkeyframesをglobal CSS名として扱い、同名keyframesを警告する。
+- Module間のglobal BEM名衝突を許容し、v0.1の非class export利用者には移行確認を求める。
+
 ## 0.1.1 - Unreleased
 
 - npm registryからインストールできる公開packageへ移行する。
