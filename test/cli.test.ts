@@ -81,49 +81,12 @@ test("CLIはshared configのnamingと明示Project scopeをそのまま使う", 
   }
 });
 
-test("CLI syncはSass展開後のmixin由来classを隣接d.tsへ同期する", async () => {
+test("CLI syncはSCSSを未対応境界として報告し、独自Sass workerを起動しない", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-cli-sass-"));
   try {
-    await fs.writeFile(
-      path.join(root, "_mixins.scss"),
-      "@mixin badge { .badge { color: red; } }\n",
-      "utf8",
-    );
     const source = path.join(root, "Card.module.scss");
-    await fs.writeFile(
-      source,
-      `/* @block p-card */\n@use "./mixins" as *;\n.root { color: blue; }\n@include badge;\n`,
-      "utf8",
-    );
-
-    assert.match(runCli(root, "sync"), /^sync: 1 BEM CSS Module\(s\)\n$/);
-    const dts = await fs.readFile(`${source}.d.ts`, "utf8");
-    assert.match(dts, /readonly "root": string/);
-    assert.match(dts, /readonly "badge": string/);
-  } finally {
-    await fs.rm(root, { recursive: true, force: true });
-  }
-});
-
-test("CLI syncはVite configのSass additionalDataと同じclass mapを使う", async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-cli-vite-sass-"));
-  try {
-    await fs.writeFile(
-      path.join(root, "vite.config.mjs"),
-      "export default { css: { preprocessorOptions: { scss: { additionalData: '$brand: red;' } } } };\n",
-      "utf8",
-    );
-    const source = path.join(root, "Card.module.scss");
-    await fs.writeFile(
-      source,
-      "/* @block p-card */\n.root { color: $brand; }\n.badge { color: blue; }\n",
-      "utf8",
-    );
-
-    assert.match(runCli(root, "sync"), /^sync: 1 BEM CSS Module\(s\)\n$/);
-    const dts = await fs.readFile(`${source}.d.ts`, "utf8");
-    assert.match(dts, /readonly "root": string/);
-    assert.match(dts, /readonly "badge": string/);
+    await fs.writeFile(source, "/* @block p-card */\n.root { color: red; }\n", "utf8");
+    assert.throws(() => runCli(root, "sync"), /BEM004/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

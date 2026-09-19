@@ -9,7 +9,6 @@ import type {
 } from "vite";
 import { createBemDiagnosticError } from "./diagnostics.js";
 import { createBemProjectIndex, type BemProjectIndex, type ProjectDtsMode } from "./project.js";
-import { createVitePreprocessor } from "./vite-preprocessor.js";
 import type {
   BemModulesOptions,
   ResolvedBemCompilerOptions,
@@ -150,7 +149,6 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
         compilerOptions,
         scope: resolvedOptions.project,
         dtsMode: projectDtsModeFor(resolvedOptions, command),
-        preprocessSource: createVitePreprocessor(config, postcssPlugin),
       });
       postcssPlugin?.configure({
         compilerOptions,
@@ -194,25 +192,24 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
     },
 
     async transformCss(filePath, source) {
-      // The PostCSS factory owns AST lowering. The Vite companion keeps this
-      // hook as a no-op so Sass/PostCSS/CSS Modules are executed exactly once
-      // by Vite in the user's declared plugin order.
-      void filePath;
-      void source;
+      // The PostCSS factory owns AST lowering. For SCSS only, inspect the raw
+      // source before Vite's Sass phase so source-level BEM diagnostics such
+      // as @extend and implicit nesting remain fail-closed. This hook never
+      // returns transformed CSS and never runs Sass/PostCSS itself.
+      if (filePath.endsWith(".module.scss")) {
+        project?.analyze(canonicalFilePath(filePath), source);
+      }
       return null;
     },
 
     async handleBuildStart() {
       if (!resolvedConfig || !this.isActive() || !project) return;
-      // Serve-time declarations are written by the registered PostCSS plugin
-      // for modules Vite actually processes. Full-scope reconciliation is an
-      // explicit `bem-modules sync`/build responsibility.
       if (command === "serve") return;
-      if (resolvedOptions.project.startup === "defer") return;
-      const mode = projectDtsModeFor(resolvedOptions, command);
-      project.setDtsMode(mode);
-      if (mode === "ignore") await project.check();
-      else await project.sync();
+      // Vite's registered PostCSS plugin owns declarations for modules that
+      // the real CSS pipeline processes. Build startup only performs the
+      // parse-free cleanup required by types:false; full-scope sync remains
+      // the explicit CLI responsibility.
+      if (resolvedOptions.types === false) await project.cleanupGeneratedDts();
     },
 
     async handleHotUpdate(context) {

@@ -94,8 +94,15 @@ test("Compiler・Project・CLIの推移的な静的依存はVite runtimeへ到�
   }
 });
 
-test("SCSS同期bridgeはSass packageを静的依存させず、CSS-only境界を保つ", () => {
-  const source = fs.readFileSync(path.join(sourceRoot, "vite-preprocessor.ts"), "utf8");
-  assert.doesNotMatch(source, /["'](?:sass|sass-embedded)["']/);
-  assert.match(source, /import\(VITE_SPECIFIER\)/);
+test("runtimeとCLIはSass packageやVite preprocess APIを直接呼ばない", () => {
+  for (const fileName of ["runtime.ts", "cli.ts", "project.ts"]) {
+    const source = fs.readFileSync(path.join(sourceRoot, fileName), "utf8");
+    assert.doesNotMatch(source, /["'](?:sass|sass-embedded)["']/);
+    assert.doesNotMatch(source, /preprocessCSS/);
+  }
+});
+
+test("test runnerはVite workerのlifecycle leakをforce-exitで隠さない", () => {
+  const source = fs.readFileSync(path.resolve(sourceRoot, "../scripts/run-tests.mjs"), "utf8");
+  assert.doesNotMatch(source, /test-force-exit/);
 });

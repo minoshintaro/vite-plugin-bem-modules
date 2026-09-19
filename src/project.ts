@@ -16,8 +16,6 @@ import type {
 } from "./types.js";
 import { canonicalFilePath, normalizeFilePath } from "./utils.js";
 
-export type BemSourcePreprocessor = (filePath: string, source: string) => Promise<string>;
-
 export type ProjectDtsMode = "generate" | "remove" | "ignore";
 
 export type BemProjectScope = {
@@ -30,7 +28,6 @@ export type BemProjectIndexOptions = {
   compilerOptions: ResolvedBemCompilerOptions;
   scope: BemProjectScope;
   dtsMode?: ProjectDtsMode;
-  preprocessSource?: BemSourcePreprocessor;
 };
 
 export type BemProjectIndex = {
@@ -41,6 +38,7 @@ export type BemProjectIndex = {
   getSchemas(): BemModuleSchema[];
   analyze(filePath: string, source: string): CompileBemModuleResult | null;
   compile(filePath: string, source: string): Promise<CompileBemModuleResult | null>;
+  cleanupGeneratedDts(): Promise<void>;
   remove(filePath: string): Promise<void>;
   check(): Promise<readonly BemModuleSchema[]>;
   sync(): Promise<readonly BemModuleSchema[]>;
@@ -60,32 +58,19 @@ async function readModuleSource(filePath: string): Promise<string | null> {
   }
 }
 
-async function compileProjectModule(
+function compileProjectModule(
   filePath: string,
   source: string,
   options: ResolvedBemCompilerOptions,
-  preprocessSource: BemSourcePreprocessor | undefined,
-): Promise<CompileBemModuleResult | null> {
-  // Keep source-level BEM diagnostics (notably @extend and implicit nesting)
-  // ahead of Sass expansion, then use the expanded stylesheet as the class-map
-  // source so mixin-generated selectors match Vite's runtime module.
+): CompileBemModuleResult | null {
   if (filePath.endsWith(".module.scss")) {
-    compileBemModule({ filePath, source, options });
-    if (!preprocessSource) {
-      throw createBemDiagnosticError(
-        "BEM004",
-        "SCSS synchronization requires Vite's resolved preprocessCSS path.",
-        { file: filePath },
-      );
-    }
+    throw createBemDiagnosticError(
+      "BEM004",
+      "SCSS synchronization is unavailable outside Vite's owned preprocessing lifecycle.",
+      { file: filePath },
+    );
   }
-  return compileBemModule({
-    filePath,
-    source: filePath.endsWith(".module.scss")
-      ? await preprocessSource!(filePath, source)
-      : source,
-    options,
-  });
+  return compileBemModule({ filePath, source, options });
 }
 
 export function validateProjectSchemas(schemas: readonly BemModuleSchema[]): void {
@@ -104,7 +89,6 @@ export function createBemProjectIndex({
   compilerOptions,
   scope: projectScope,
   dtsMode: initialDtsMode = "ignore",
-  preprocessSource,
 }: BemProjectIndexOptions): BemProjectIndex {
   const canonicalRoot = canonicalFilePath(root);
   const schemas = new Map<string, BemModuleSchema>();
@@ -167,7 +151,7 @@ export function createBemProjectIndex({
     source: string,
   ): Promise<CompileBemModuleResult | null> => {
     const canonical = canonicalFilePath(filePath);
-    const analyze = () => compileProjectModule(canonical, source, compilerOptions, preprocessSource);
+    const analyze = () => compileProjectModule(canonical, source, compilerOptions);
     if (!isInScope(canonical)) return analyze();
     return enqueue(async () => {
       try {
@@ -188,7 +172,7 @@ export function createBemProjectIndex({
     for (const filePath of files) {
       const source = await readModuleSource(filePath);
       if (source === null) continue;
-      const result = await compileProjectModule(filePath, source, compilerOptions, preprocessSource);
+      const result = compileProjectModule(filePath, source, compilerOptions);
       if (result) next.set(canonicalFilePath(filePath), result.schema);
     }
     validateProjectSchemas(schemaValues(next));
@@ -233,6 +217,15 @@ export function createBemProjectIndex({
     return schemaValues(schemas);
   };
 
+  const cleanupGeneratedDts = async (): Promise<void> => {
+    for (const filePath of await collectAdjacentDtsFiles(canonicalRoot, projectScope)) {
+      await removeSyncedDts(filePath);
+    }
+    for (const filePath of [...generatedDtsFiles]) {
+      if (isInScope(filePath)) await removeSyncedDts(filePath);
+    }
+  };
+
   return {
     root: canonicalRoot,
     setDtsMode(mode) {
@@ -253,6 +246,7 @@ export function createBemProjectIndex({
       });
     },
     compile,
+    cleanupGeneratedDts: () => enqueue(cleanupGeneratedDts),
     remove: (filePath) => enqueue(() => remove(filePath)),
     check: () => enqueue(check),
     sync: () => enqueue(sync),

@@ -263,7 +263,7 @@ When Vite processes a CSS Module with `@block` during dev—or during a build wi
 
 The generated `.d.ts` is derived from the CSS source. For v0.1, committing it to the consumer repository is recommended so editors and `tsc` can resolve the class dictionary immediately after a clone. Do not edit generated declarations by hand; regenerate them whenever the source CSS changes.
 
-The bundled CLI is the primary way to synchronize declarations without starting Vite. It scans the same Project scope locally and in CI, independent of entry points and import reachability.
+The bundled CLI is the primary way to synchronize CSS declarations without starting Vite. It scans the same Project scope locally and in CI, independent of entry points and import reachability. SCSS synchronization is unavailable in the standalone CLI (`BEM004`); use a Vite build or dev server so Sass, PostCSS, CSS Modules, and declaration projection share one host-owned pipeline.
 
 ```sh
 bem-modules sync
@@ -348,7 +348,7 @@ bemModules({
 
 `project.include` / `project.exclude` define the explicit scope for `check` and `sync`, including Modules that are not imported. Project-wide Block-name and generated-class uniqueness checks are not part of v0.2.
 
-For integrations that perform the startup scan elsewhere, set `project.startup: "defer"`. This postpones full-scope `check` / `sync` during `buildStart`; transformation and HMR for CSS Modules reached by Vite remain active. The default `"scan"` mode keeps the explicit scope available for startup processing.
+The Vite companion does not run a full-scope Project `check` / `sync` during `buildStart`. It lets the registered PostCSS plugin generate declarations for Modules that Vite actually processes. `project.startup` remains accepted for configuration compatibility, but full-scope CSS synchronization belongs to the explicit CLI operation; SCSS remains a `BEM004` boundary for that standalone command.
 
 ```ts
 bemModules({
@@ -394,7 +394,7 @@ export default defineConfig({
 }
 ```
 
-`bem-modules check` validates every Module in the explicit scope. After validation, `bem-modules sync` creates or updates adjacent `.d.ts` files and removes orphaned, plugin-owned declarations inside that scope. CLI behavior is determined by the command rather than by `types`: `check` never changes generated files, while `sync` reconciles them. A declaration is not removed merely because its Module is no longer imported.
+`bem-modules check` validates every CSS Module in the explicit scope. After validation, `bem-modules sync` creates or updates adjacent `.d.ts` files and removes orphaned, plugin-owned declarations inside that scope. CLI behavior is determined by the command rather than by `types`: `check` never changes generated files, while `sync` reconciles them. A declaration is not removed merely because its Module is no longer imported. `.module.scss` files stop with `BEM004` because the standalone CLI cannot safely own Vite's Sass worker lifecycle.
 
 ### Exclude global classes from BEM conversion
 

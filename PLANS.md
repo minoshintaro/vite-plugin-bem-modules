@@ -17,7 +17,11 @@
 
 2026-09-19の追加回帰で、`src/sass.ts`の直接`compileStringAsync`経路はViteの`css.preprocessorOptions.scss.additionalData`を取りこぼし、`types: false`の通常build自体を壊すことを観測した。この観測で「SCSS同期だけなら独自compilerでもよい」という判断を撤回し、独自Sass loaderを削除して、build / CLIともVite 8の公開`preprocessCSS`と解決済みconfigを使う経路へ変更した。Viteの公開経路で足りない処理は独自互換実装へ戻さず、未対応境界として停止する方針を`REBUILD-SPEC.md`へ昇格した。
 
-同日の最終回帰では、`CI=true /Users/minos/.agents/bin/agent-test -- npm test` が対象145 / pass 145 / fail 0、`CI=true /Users/minos/.agents/bin/agent-test -- npm run check:typegen` がexit 0、`git diff --check`もexit 0だった。Vite公開`preprocessCSS`にclose APIがないため、テストrunnerにはNodeの`--test-force-exit`を追加し、CLIは出力完了後に明示終了する。ブラウザHMR runnerは今回も未観測である。
+bridge版の検証では、`CI=true /Users/minos/.agents/bin/agent-test -- npm test` が対象145 / pass 145 / fail 0、`CI=true /Users/minos/.agents/bin/agent-test -- npm run check:typegen` がexit 0だったが、下記再レビューで二重PostCSSとworker lifecycle leakが判明し、このbridge版の判断は撤回した。ブラウザHMR runnerは今回も未観測である。
+
+再レビューで、buildStartのProject `sync`が利用者PostCSS pluginをSCSSのpreprocess passと実Vite passで2回実行すること（counter観測値2）、およびprogrammatic build後にVite公開`preprocessCSS`のSass workerが自然終了しないことを再現した。前回のbridge、CLI `process.exit`、test runner `--test-force-exit`はこの問題を隠すため撤回した。Vite runtimeはbuildStartから全体`check` / `sync`を行わず、実Vite pipelineを通ったModuleだけをPostCSS pluginが同期する。`types:false`は解析なしの生成d.ts掃除だけを行い、SCSSのstandalone CLI同期は`BEM004`で停止する。公開APIに安全なclose経路がないため、独自lifecycle管理や設定模倣へ進まない。
+
+再修正後は、対象148 / pass 148 / fail 0の`npm test`が`--test-force-exit`なしで自然終了し、PostCSS一回実行、未import SCSS cleanup、CLIのSCSS未対応境界、Vite実pipeline由来のsource-level診断を確認した。`npm run check:typegen`もexit 0で、差分検査を最終コミット前に再実行する。
 
 `CI=true /Users/minos/.agents/bin/agent-test -- pnpm test` は対象139 / pass 139 / fail 0、`CI=true /Users/minos/.agents/bin/agent-test -- pnpm check:typegen` もexit 0だった。Vite 8.2.1のbuild/devと直接hotUpdate境界を検証済み。ブラウザE2E、Vite 6/7 matrix、Windows watcherは未検証。
 

@@ -13,14 +13,11 @@ source
   │                                      │
   │                                      └─ class-only .d.ts / keyframes registry
   │
-  └─ Project / CLI SCSS sync
-       Vite preprocessCSS (resolved config)
-         → source-level BEM preflight
-         → compiler schema analysis
-         → class map / .d.ts
+  └─ Project / CLI CSS sync
+       compiler schema analysis → class map / .d.ts
 ```
 
-Project / CLIのSCSS同期でも、独自のSass compilerやloaderは持ちません。Vite 8の公開`preprocessCSS`へ解決済みVite configを渡し、`css.preprocessorOptions.scss`の`additionalData`、alias、importerなどをViteと同じ設定で適用します。実行時のPostCSS pluginとCSS Modulesは同期用の前処理から除外し、BEM loweringが二重に行われないようにします。
+SCSSのruntime変換と型生成は、実際のVite Sass → PostCSS → CSS Modules pipelineを一度だけ通ったASTから行います。Project / CLIはViteのmodule graph外を明示的に走査するCSS同期を担います。Viteの公開`preprocessCSS`には呼び出し側がSass workerを閉じるAPIがないため、Project / CLIが別のSCSS前処理を起動する経路は製品実装に採用しません。
 
 ## Compilerとschema
 
@@ -28,7 +25,7 @@ Project / CLIのSCSS同期でも、独自のSass compilerやloaderは持ちま�
 
 [`src/schema.ts`](../src/schema.ts)は、`@block`の解析、BEM分類、selector lowering、class map / export map、keyframes参照の構築を担います。class名、ID、keyframesの変換はPostCSS AST上でも同じ解析規則を使います。class mapは型生成、export mapはruntime CSS Modulesとの契約に使うため、互いを再利用しません。
 
-Compilerが拒否する動的なselector生成や`@at-root`、BEM名を作るSass nesting、`@extend`などは`BEM005`でfail closedします。Sass展開後のclass mapを必要とする同期では、まず元ソースをCompilerで検査し、成功した場合だけViteの`preprocessCSS`結果をCompilerへ渡します。
+Compilerが拒否する動的なselector生成や`@at-root`、BEM名を作るSass nesting、`@extend`などは`BEM005`でfail closedします。Sassのclass mapは、Viteが実際にPostCSSへ渡すASTから取得し、Project / CLIで独自にSass展開後の結果を推測しません。
 
 ## PostCSS plugin
 
@@ -45,9 +42,9 @@ pluginは明示的に`css.postcss.plugins`へ登録される必要がありま�
 
 [`src/project.ts`](../src/project.ts)は、rootと明示された`project.include` / `project.exclude`からfilesystem上の対象集合を作ります。`include`省略はroot全体、`include: []`は空集合です。Projectは対象集合を走査してCompilerを呼び、Module内のBEM診断とclass mapを検査します。v0.2では、別Module間のBlock名・生成class名の一意性は要求しません。グローバルなBEM名の衝突はCSSのcascadeとkeyframes警告の責務です。
 
-`check`は検査、`sync`は検査済みschemaと所有marker付きの隣接`.d.ts`の同期です。scope外のsourceや生成物はProjectが検査・削除しません。Vite serveでは実際にPostCSSを通ったModuleの型をpluginが書き、Projectの全体同期はCLIまたはbuildの責務です。
+`check`は検査、`sync`は検査済みschemaと所有marker付きの隣接`.d.ts`の同期です。scope外のsourceや生成物はProjectが検査・削除しません。Project / CLIの明示同期はCSS Moduleを対象にし、SCSSはViteの所有するpreprocessing lifecycleがないため`BEM004`の未対応境界として停止します。Vite serve / buildでは、実際にPostCSSを通ったModuleの型をpluginが書きます。未import Moduleの全体同期はCLIのCSS経路だけが担い、buildStartでは行いません。
 
-[`src/cli.ts`](../src/cli.ts)はshared `bem-modules.config`を読み、同じProject scopeとcompiler optionsを使います。さらにrootのVite configを`resolveConfig`で解決し、CLIのSCSS同期にもViteと同じpreprocessor設定を渡します。Viteの公開preprocess APIにSass compilerのclose hookがないため、CLIは出力完了後に終了して埋め込みSassのworkerを残しません。
+[`src/cli.ts`](../src/cli.ts)はshared `bem-modules.config`を読み、同じProject scopeとcompiler optionsを使います。CLIはViteのSass compilerを起動せず、SCSS同期を未対応境界として報告します。Sassの追加設定、alias、custom importerを再現するための設定コピーや独自loaderは持ちません。
 
 ## Vite companion
 
@@ -55,20 +52,20 @@ pluginは明示的に`css.postcss.plugins`へ登録される必要がありま�
 
 - `css.transformer: "lightningcss"`を`BEM011`で拒否する
 - BEM PostCSS pluginの明示登録を`BEM010`で検証する
-- resolved Vite configをSCSS同期用のpreprocess bridgeへ渡す
-- serve / buildのd.ts modeを設定し、build開始時のProject `check` / `sync`を起動する
+- serve / buildのd.ts modeを設定し、実Vite pipelineを通ったModuleの型同期をPostCSS pluginへ委譲する
+- `types: false`のbuild開始時は、Sass / PostCSSを再実行せず、scope内のplugin所有`.d.ts`だけを掃除する
 - source unlink時にProject、d.ts、keyframes registryを掃除する
 - 通常のSass、PostCSS、CSS Modules、HMRはViteと登録済みPostCSS pluginへ委譲する
 
 `transform`はno-opです。通常のmodule変更でProjectがimporterを読んだり、importerをinvalidateしたり、独自のHMR payloadを返したりしません。削除だけは所有するschemaと生成物を撤回するため、companionが処理します。virtual module、`node_modules`、`@block`のないCSS Moduleは標準Viteへ委譲します。BEM対象の`?raw` / `?inline` / `?url`は`BEM008`で拒否します。
 
-`src/vite-preprocessor.ts`はViteを静的runtime依存としてCompilerへ持ち込まず、必要なときだけ動的にViteの`preprocessCSS` / `resolveConfig`を読み込みます。通常のCSS consumerにSass packageを直接importさせる経路はありません。Sass packageの選択・worker lifecycle・alias解決はViteのpreprocessorに任せます。
+ViteのSass package選択・worker lifecycle・alias解決はViteの通常pipelineだけに任せます。公開APIで呼び出し側のlifecycleを安全に完了できない処理は、plugin側で補助workerやprivate close APIを作らず未対応境界として扱います。
 
 ## `.d.ts`の所有
 
 [`src/dts.ts`](../src/dts.ts)はschemaから宣言文字列を作る純粋なprojectionです。filesystemのread / writeと所有確認はProjectまたはPostCSS pluginが担当します。手書きの隣接`.d.ts`を上書きせず、所有markerがなければ`BEM006`で停止します。
 
-Viteではserve、または`types: true`で生成mode、`types: false`でremove mode、buildで`types`省略時はignore modeです。CLIでは`check`がignore、`sync`がgenerateです。source削除、`@block`消失、明示scope内の孤立生成物、remove modeが削除の根拠になります。import到達性だけの変化はProjectの全体集合や`.d.ts`の所有を変更しません。
+Viteではserve、または`types: true`で生成mode、`types: false`でremove mode、buildで`types`省略時はignore modeです。Vite build / serveの生成対象は実際にPostCSSを通ったModuleです。`types: false`のbuild開始時は解析なしでscope内のplugin所有宣言を掃除し、runtime pipelineが処理したModuleも同じmodeで削除します。CLIではCSSの`check`がignore、CSSの`sync`がgenerateです。SCSS CLI syncは`BEM004`で停止します。source削除、`@block`消失、明示scope内の孤立生成物、remove modeが削除の根拠になります。
 
 ## 変更時の検証入口
 
@@ -77,12 +74,12 @@ Viteではserve、または`types: true`で生成mode、`types: false`でremove 
 | 命名、分類、診断、class map | `src/schema.ts` / `src/options.ts` | `test/schema.test.ts`、`test/compiler.test.ts` |
 | pure compile result | `src/compiler.ts` | `test/compiler.test.ts` |
 | scope、scan、d.ts | `src/project.ts` / `src/files.ts` | `test/project.test.ts`、`test/files.test.ts` |
-| Sass同期とVite設定 | `src/vite-preprocessor.ts` / `src/project.ts` | `test/plugin.test.ts`、`test/cli.test.ts` |
+| Vite Sass、PostCSS、型同期 | `src/runtime.ts` / `src/postcss.ts` | `test/plugin.test.ts`、`test/dev.test.ts` |
 | Vite transform、PostCSS、HMR | `src/runtime.ts` / `src/postcss.ts` | `test/plugin.test.ts`、`test/dev.test.ts` |
 | CLIとshared config | `src/cli.ts` / `package.json` | `test/cli.test.ts`、`test/package.test.ts` |
 | package root、tarball | `src/index.ts` / `package.json` | `test/package.test.ts`、`pnpm pack --dry-run` |
 
-schemaの意味を変更するときはCompiler、PostCSS、Projectのunit testから始め、CSS・JavaScript・型の実Vite buildまで通します。境界の変更では、呼び出し回数ではなくschema、生成物、最終CSS、runtime exportの契約を検証します。ブラウザHMR runnerは補助的な観測であり、通常の製品検証では未観測のままです。
+schemaの意味を変更するときはCompiler、PostCSS、Projectのunit testから始め、CSS・JavaScript・型の実Vite buildまで通します。利用者PostCSS pluginが一度だけ実行されること、未import ModuleをbuildStartで解析しないこと、worker lifecycleをforce-exitで隠さないことも検証します。ブラウザHMR runnerは補助的な観測であり、通常の製品検証では未観測のままです。
 
 ## 再検討条件
 

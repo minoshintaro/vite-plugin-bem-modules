@@ -138,8 +138,9 @@ styles.profileImageRounded; // "p-card__profileImage--rounded"
 - 生成物にはplugin所有markerを付ける。markerのない手書きfileとsymlinkは上書き・削除しない。
 - 生成内容が変わらない場合はfileを書き換えない。
 - Viteが処理した管理対象Moduleはdev中に生成・更新する。sourceの削除または`@block`の削除では、plugin所有の型宣言を削除する。
-- importされなくなっただけでは削除しない。未import Moduleを含む全体同期と孤立生成物の掃除は、明示的な同期コマンドの責務とする。
-- SCSSの型生成は、Viteと同じSass展開後のclass対応表を使う。source SCSSだけを独自解析してmixin由来classを推測しない。
+- importされなくなっただけでは通常の生成modeで削除しない。未import Moduleを含む全体同期と孤立生成物の内容を再計算する掃除は、明示的な同期コマンドの責務とする。`types: false`のbuildだけは、解析なしでscope内のplugin所有宣言を一括削除する。
+- SCSSの型生成は、Viteの実際のSass / PostCSS pipelineを通ったclass対応表を使う。source SCSSだけを独自解析してmixin由来classを推測しない。buildStartから別のSCSS前処理を呼び出して同じModuleを二重処理しない。
+- standalone CLIはSCSSの`check` / `sync`を`BEM004`で未対応として停止する。Viteの公開preprocess APIに呼び出し側のSass worker close APIがないため、CLIが独自lifecycleやprivate APIを持つことは契約に含めない。
 
 ### 3.11 dev更新とHMR
 
@@ -175,7 +176,7 @@ styles.profileImageRounded; // "p-card__profileImage--rounded"
 
 - `naming.wordCase`、`naming.elementSeparator`、`naming.modifierSeparator`、`modifierOutput`、`types`、`project` は v0.1 の名前を維持する。これらは既存設定の移行負担が小さく、Vite への委譲とも衝突しない。
 - `globalScope.exact` / `prefix` も互換設定として維持する。ただし新規コードでは CSS 標準の `:global(...)` を推奨し、設定による追加 alias は class-only API に増やさない。`root` は従来どおり Block として扱う。
-- Project-wide の一意性検査は廃止する。`project.include` / `exclude` / `startup` は、未import Moduleを含む明示的な `check` / `sync` と、必要な起動時走査の範囲指定として残す。
+- Project-wide の一意性検査は廃止する。`project.include` / `exclude` は未import Moduleを含む明示的な `check` / `sync` の範囲指定として残す。Vite companionはbuildStartで全体走査せず、`project.startup`は設定互換のため受け付けるが全体同期を起動しない。
 - `bem-modules check` と `bem-modules sync` は残す。`check` は class 構文と設定の検査、`sync` は同じ範囲の class-only 隣接型の同期を担当し、keyframes の Vite 警告台帳を CLI の永続状態にはしない。
 - package root の公開 factory は既定 export `bemModules`、`createBemPostcssPlugin`、`defineBemModulesConfig` とする。Compiler / Project / keyframes registry は内部 API とし、実 consumer が現れるまで公開しない。
 - v0.1 からの移行案内では、ID・keyframes・`@value`・任意の ICSS `:export` key の型/APIが消えること、PostCSS plugin の明示登録が必要なこと、Project-wide 一意性検査がなくなることを破壊的差分として明記する。
@@ -196,6 +197,7 @@ styles.profileImageRounded; // "p-card__profileImage--rounded"
 - 登録検出は、`createBemPostcssPlugin()`が返す marker付き PostCSS pluginを、解決済み `css.postcss.plugins` の配列から探す。配列の wrapperを暗黙に展開したり、他の関数を実行して推測したりしない。見つからなければ config 解決時に `BEM010` で停止する。
 - `css.postcss.plugins` の順序をそのまま使用する。BEM pluginの自動挿入・二重実行・外部設定の再構成は行わない。
 - Viteの default PostCSS transformerだけを初期対象とし、`css.transformer: "lightningcss"` は `BEM011` で明示的に対象外とする。
+- build / devではViteの実CSS pipelineだけをSass、PostCSS、CSS Modules、型projectionへ使う。呼び出し側がworker lifecycleを閉じられないVite公開APIをbuildStartやlibrary runtimeから直接起動しない。
 
 ## 6. 製品実装の受け入れ条件
 
@@ -207,10 +209,11 @@ styles.profileImageRounded; // "p-card__profileImage--rounded"
 4. ID、`@keyframes`、vendor prefix付きkeyframes、`animation` / `animation-name`の参照を、構文の境界を越えて誤変換しないこと。
 5. 同名keyframesが複数の管理対象Moduleにある場合、警告を出しつつbuildを成功させ、変更・改名・削除後に古い登録と警告を残さないこと。
 6. `vite.config`の`css.postcss.plugins`へ手書き登録した場合だけ動作し、未登録時に起動時エラーになること。利用者が並べた他のPostCSS pluginとの順序を保つこと。
-7. Sass、PostCSS、CSS Modules、asset bundlingをViteへ委譲し、同じPostCSS pluginを二重実行しないこと。build / CLIのSCSS同期もViteの解決済み設定と公開`preprocessCSS`経路を使い、独自Sass compilerを持たないこと。
+7. Sass、PostCSS、CSS Modules、asset bundlingをViteへ委譲し、同じPostCSS pluginを二重実行しないこと。SCSSのbuild / dev型同期は実Vite pipelineだけを使い、独自Sass compilerやbuildStartからの別`preprocessCSS`経路を持たないこと。
 8. dev serverでclassの追加・削除・改名、CSS宣言値、Sass partial、keyframes名・内容の変更を、document全体のreloadへ強制せずCSSとdefault importへ反映すること。
 9. source unlink、`@block`削除、手書きまたはsymlinkの`.d.ts`保護、内容不変時の書き込み抑止、未import Moduleの明示同期を確認すること。
 10. 初期対象のVite 8でbuild、dev、ブラウザHMRを確認すること。Vite 6 / 7はpeer rangeへ追加する場合に別途matrixを実行する。
+11. programmatic Vite buildとtest runnerが自然終了し、worker lifecycle leakを`process.exit`または`--test-force-exit`で隠さないこと。
 
 ## 7. 根拠と未確認範囲
 
@@ -219,7 +222,7 @@ styles.profileImageRounded; // "p-card__profileImage--rounded"
 - 現行v0.1契約: [`SPEC.md`](SPEC.md)
 - 作業状態と隔離試作の観測: [`PLANS.md`](PLANS.md)
 - 現行のBEM解析とselector lowering: [`src/schema.ts`](src/schema.ts)
-- 現行のVite hook、`getJSON` observer、HMR: [`src/index.ts`](src/index.ts)、[`src/runtime.ts`](src/runtime.ts)
+- 現行のVite hook、明示的PostCSS registration、HMR: [`src/index.ts`](src/index.ts)、[`src/runtime.ts`](src/runtime.ts)、[`src/postcss.ts`](src/postcss.ts)
 - 現行のProject一意性と`.d.ts`同期: [`src/project.ts`](src/project.ts)、[`src/dts.ts`](src/dts.ts)
 - 構文解析、型生成、警告台帳、明示同期、実ブラウザHMRの隔離試作: [`scratch/step2-parser-spike`](scratch/step2-parser-spike)
 

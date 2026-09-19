@@ -4,7 +4,6 @@ import fs from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { createBemProjectIndex } from "./project.js";
 import { resolveOptions } from "./options.js";
-import { createVitePreprocessor, resolveViteConfig } from "./vite-preprocessor.js";
 import type { BemModulesOptions } from "./types.js";
 
 type CliArguments = {
@@ -27,12 +26,6 @@ function usage(): string {
     "  -h, --help          Show this help",
     "  -v, --version       Show the package version",
   ].join("\n");
-}
-
-function writeOutput(value: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    process.stdout.write(value, (error) => error ? reject(error) : resolve());
-  });
 }
 
 async function packageVersion(): Promise<string> {
@@ -114,11 +107,11 @@ async function loadBemModulesOptions(root: string, configuredPath: string | unde
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.length === 1 && (args[0] === "--help" || args[0] === "-h")) {
-    await writeOutput(`${usage()}\n`);
+    process.stdout.write(`${usage()}\n`);
     return;
   }
   if (args.length === 1 && (args[0] === "--version" || args[0] === "-v")) {
-    await writeOutput(`${await packageVersion()}\n`);
+    process.stdout.write(`${await packageVersion()}\n`);
     return;
   }
   const parsed = parseArguments(args);
@@ -127,7 +120,6 @@ async function main(): Promise<void> {
   // normalizing the same values as the Vite adapter, this keeps malformed
   // nested config from being hidden by an object spread.
   const resolvedConfig = resolveOptions(config);
-  const viteConfig = await resolveViteConfig(parsed.root);
   const scope = resolveOptions({
     project: {
       include: parsed.include ?? resolvedConfig.project.include,
@@ -143,21 +135,12 @@ async function main(): Promise<void> {
     },
     scope,
     dtsMode: parsed.command === "sync" ? "generate" : "ignore",
-    preprocessSource: createVitePreprocessor(viteConfig),
   });
   const schemas = parsed.command === "sync" ? await project.sync() : await project.check();
-  await writeOutput(`${parsed.command}: ${schemas.length} BEM CSS Module(s)\n`);
+  process.stdout.write(`${parsed.command}: ${schemas.length} BEM CSS Module(s)\n`);
 }
 
-main().then(
-  () => {
-    // Vite's public preprocessCSS API owns its Sass compiler lifecycle but
-    // does not expose a close hook. The CLI has completed all work here, so
-    // terminate explicitly instead of retaining the embedded compiler handle.
-    process.exit(0);
-  },
-  (error: unknown) => {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-    process.exit(1);
-  },
-);
+main().catch((error: unknown) => {
+  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  process.exitCode = 1;
+});
