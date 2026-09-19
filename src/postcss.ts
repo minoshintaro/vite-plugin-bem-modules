@@ -9,6 +9,7 @@ import type {
   BemModulesOptions,
   ResolvedBemCompilerOptions,
 } from "./types.js";
+import { isInNodeModules } from "./vite-utils.js";
 
 export const BEM_POSTCSS_PLUGIN_NAME = "vite-plugin-bem-modules";
 export const BEM_POSTCSS_PLUGIN_MARKER = "__vitePluginBemModulesPostcss";
@@ -112,6 +113,7 @@ export function createBemPostcssPlugin(options: BemModulesOptions = {}): BemPost
       if (!from || from.startsWith("<") || from.includes("\0")) return;
       const sourcePath = canonicalFilePath(path.resolve(from));
       if (ignoredFiles.delete(sourcePath)) return;
+      if (!isCssModulePath(sourcePath) || isInNodeModules(sourcePath)) return;
       const keyframeNames = collectKeyframeNames(root);
       let schema;
       try {
@@ -128,7 +130,7 @@ export function createBemPostcssPlugin(options: BemModulesOptions = {}): BemPost
 
       keyframesRegistry.replace(sourcePath, keyframeNames);
       reportConflicts(keyframesRegistry, reportedConflicts, sourcePath, result);
-      if (!isCssModulePath(sourcePath) || dtsMode === "ignore") return;
+      if (dtsMode === "ignore") return;
       if (dtsMode === "generate") {
         await writeGeneratedDts(resolveDtsPath(sourcePath), renderDts(schema));
       } else {

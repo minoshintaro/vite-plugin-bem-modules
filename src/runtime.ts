@@ -29,6 +29,7 @@ import {
   type BemPostcssPlugin,
 } from "./postcss.js";
 import { KeyframesRegistry } from "./keyframes-registry.js";
+import { isBemModuleSourceOwned, validateBemModuleSourceSyntaxIfOwned } from "./schema.js";
 
 type BemRuntime = {
   options: ResolvedBemModulesOptions;
@@ -188,7 +189,7 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
       if (isVirtualModule(filePath) || !isModuleFile(filePath)) return false;
       const source = await readSource(filePath);
       if (source === null) return false;
-      return (project?.analyze(canonicalFilePath(stripQuery(filePath)), source) ?? null) !== null;
+      return isBemModuleSourceOwned(canonicalFilePath(stripQuery(filePath)), source);
     },
 
     async transformCss(filePath, source) {
@@ -197,7 +198,7 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
       // as @extend and implicit nesting remain fail-closed. This hook never
       // returns transformed CSS and never runs Sass/PostCSS itself.
       if (filePath.endsWith(".module.scss")) {
-        project?.analyze(canonicalFilePath(filePath), source);
+        validateBemModuleSourceSyntaxIfOwned(canonicalFilePath(filePath), source);
       }
       return null;
     },

@@ -47,6 +47,18 @@ test("PostCSS factoryは管理対象のclass、ID、keyframes、animationを構�
   });
 });
 
+test("PostCSS factoryは通常CSSの@blockを所有しない", async () => {
+  await withTempRoot(async (root) => {
+    const source = "/* @block p-global */ .root { color: red; }";
+    const result = await postcss([createBemPostcssPlugin({ types: true })]).process(source, {
+      from: path.join(root, "global.css"),
+    });
+
+    assert.equal(result.css, source);
+    await assert.rejects(() => fs.access(path.join(root, "global.css.d.ts")), { code: "ENOENT" });
+  });
+});
+
 test("PostCSS factoryのkeyframes台帳は再処理・改名・削除で古いfileを残さない", async () => {
   await withTempRoot(async (root) => {
     const fileA = path.join(root, "A.module.css");

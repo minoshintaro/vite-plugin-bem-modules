@@ -23,11 +23,15 @@ bridge版の検証では、`CI=true /Users/minos/.agents/bin/agent-test -- npm t
 
 再修正後は、対象148 / pass 148 / fail 0の`npm test`が`--test-force-exit`なしで自然終了し、PostCSS一回実行、未import SCSS cleanup、CLIのSCSS未対応境界、Vite実pipeline由来のsource-level診断を確認した。`npm run check:typegen`もexit 0で、差分検査を最終コミット前に再実行する。
 
-`CI=true /Users/minos/.agents/bin/agent-test -- pnpm test` は対象139 / pass 139 / fail 0、`CI=true /Users/minos/.agents/bin/agent-test -- pnpm check:typegen` もexit 0だった。Vite 8.2.1のbuild/devと直接hotUpdate境界を検証済み。ブラウザE2E、Vite 6/7 matrix、Windows watcherは未検証。
+`793c9c1`の再レビューでは、SCSSのsource-level診断がraw sourceからclass schema全体を構築し、Sassが`@if false`で除くclassにも`BEM003`を出すことを再現した。raw sourceは`@extend`と暗黙BEM nestingだけを検査し、class schemaはViteの実Sass / PostCSS pipelineだけから構築するよう分離した。同じレビューで、PostCSS pluginが`@block`を含む通常CSSと`node_modules`内のCSS Moduleまで所有していたため、入口で`.module.css` / `.module.scss`と依存packageを判定してViteへ委譲した。追加回帰を含むtest runnerは対象150のうち149件が成功し、package-manager経由を要求するtarball検査1件も実pnpm pathを渡した単独実行で成功した。型生成例、型検査、生成型検査、`git diff --check`も成功している。
+
+同じ差分を製品`bemModules` / `createBemPostcssPlugin`でVite 8.2.1の実ブラウザへ通し、1280×720、device pixel ratio 2で初期DOMとCSS Modules default import、classの追加・削除・改名、Sass partial、keyframesの改名・内容変更・旧CSSOM規則の除去、隣接`.d.ts`の更新・削除を確認した。全更新でdocument nonceと`performance.timeOrigin`は不変、`beforeunload` / `pagehide`は0、`vite:beforeFullReload`は空、DOM identityは全要素で維持され、browser consoleのwarning / errorは0件だった。検証用runnerの一時差分と一時rootは終了時に破棄した。最終差分レビューではquery所有判定だけがraw SCSSのclass schemaを構築していたため、所有判定を実在する`@block`コメントの確認へ分離した。回帰テストは修正前に`BEM003`で失敗し、修正後は対象1 / pass 1、変更範囲の`plugin.test.ts`と`v02.test.ts`は対象64 / pass 64、TypeScript buildはexit 0だった。宣言済みpnpm 11.9.0の実CLIを`npm_execpath`へ渡した全体test runnerも対象151 / pass 151 / fail 0だった。
+
+対象139件だった旧検査では、`CI=true /Users/minos/.agents/bin/agent-test -- pnpm test` がpass 139 / fail 0、`CI=true /Users/minos/.agents/bin/agent-test -- pnpm check:typegen` もexit 0だった。この時点ではVite 8.2.1のbuild/devと直接hotUpdate境界だけを検証し、ブラウザE2E、Vite 6/7 matrix、Windows watcherは未検証だった。
 
 ## 今後のフェーズ
 
-1. ブラウザHMR E2EとVite 6/7 matrixを、peer rangeを広げる前の確認として実行する。
+1. Vite 6/7 matrixと、必要なversionでのブラウザHMRを、peer rangeを広げる前の確認として実行する。
 2. Windows watcherを含むCI環境で、直接hotUpdate以外のファイル監視経路を検証する。
 3. v0.1からの移行案内とv0.2のREADMEを、実際の公開手順に合わせて最終確認する。
 

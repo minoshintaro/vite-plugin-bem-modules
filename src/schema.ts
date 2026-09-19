@@ -163,6 +163,14 @@ function assertSupportedBemSyntax(root: Root, filePath: string): void {
   });
 }
 
+export function validateBemModuleSourceSyntaxIfOwned(
+  filePath: string,
+  source: string,
+): void {
+  const root = parseModuleSourceIfOwned(filePath, source);
+  if (root) assertSupportedBemSyntax(root, filePath);
+}
+
 function readBlockComment(root: Root, filePath: string): BlockComment {
   const comments = collectBlockComments(root);
 
@@ -243,6 +251,10 @@ function parseModuleSourceIfOwned(filePath: string, source: string): Root | null
   if (!BLOCK_COMMENT_CANDIDATE.test(source)) return null;
   const root = parseModuleSource(filePath, source);
   return collectBlockComments(root).length > 0 ? root : null;
+}
+
+export function isBemModuleSourceOwned(filePath: string, source: string): boolean {
+  return parseModuleSourceIfOwned(filePath, source) !== null;
 }
 
 function classSelector(value: string): SelectorNode {

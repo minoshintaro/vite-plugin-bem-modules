@@ -920,6 +920,35 @@ test("types:trueのbuildはVite Sass設定と同じclass mapをd.tsへ同期す�
   }
 });
 
+test("SCSSのclass schemaはSassが出力した実pipelineだけから構築する", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-sass-conditional-schema-"));
+  try {
+    await fs.writeFile(
+      path.join(root, "Card.module.scss"),
+      `/* @block p-card */
+$emitGhost: false;
+@if $emitGhost {
+  .ghost--invalid { color: red; }
+}
+.root { color: blue; }
+`,
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(root, "main.ts"),
+      "import styles from './Card.module.scss'; export const className = styles.root;",
+      "utf8",
+    );
+
+    await assert.doesNotReject(() => buildFixture(root, [testBemModules({ types: true })], false));
+    const dts = await fs.readFile(path.join(root, "Card.module.scss.d.ts"), "utf8");
+    assert.match(dts, /readonly "root": string/);
+    assert.doesNotMatch(dts, /ghost/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test("未知classが既知classと同じexport値なら由来をaliasと断定しない", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-output-alias-"));
   try {
@@ -989,6 +1018,39 @@ test("BEM対象の raw / inline / url query はBEM008で拒否する", async () 
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
+  }
+});
+
+test("SCSS queryの所有判定はraw sourceからclass schemaを構築しない", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-scss-query-ownership-"));
+  try {
+    await fs.writeFile(
+      path.join(root, "Card.module.scss"),
+      `/* @block p-card */
+$emitGhost: false;
+@if $emitGhost {
+  .ghost--invalid { color: red; }
+}
+.root { color: blue; }
+`,
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(root, "main.ts"),
+      "import css from './Card.module.scss?raw'; export const value = css;",
+      "utf8",
+    );
+
+    await assert.rejects(
+      () => buildFixture(root, [testBemModules({ types: false })], false),
+      (error: unknown) => {
+        assert.doesNotMatch(String(error), /vite-plugin-bem-modules:BEM003/);
+        assert.match(String(error), /vite-plugin-bem-modules:BEM008[\s\S]*CSS Module query[\s\S]*\?raw/);
+        return true;
+      },
+    );
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
   }
 });
 
@@ -2004,7 +2066,11 @@ test("node_modulesのCSS ModuleはBEM schemaの対象外にする", async () => 
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-external-"));
   try {
     await fs.mkdir(path.join(root, "node_modules", "vendor"), { recursive: true });
-    await fs.writeFile(path.join(root, "node_modules", "vendor", "Vendor.module.css"), ".vendor { color: red; }", "utf8");
+    await fs.writeFile(
+      path.join(root, "node_modules", "vendor", "Vendor.module.css"),
+      "/* @block p-vendor */ .vendor { color: red; }",
+      "utf8",
+    );
     await fs.writeFile(path.join(root, "main.ts"), "import styles from './node_modules/vendor/Vendor.module.css'; export const className = styles.vendor;", "utf8");
 
     await build({
