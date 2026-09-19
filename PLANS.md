@@ -1,22 +1,63 @@
-# npm公開準備
+# v0.2作り直し
 
 ## 現在の状態
 
-- public repositoryとGitHub Release `v0.1.0`を公開した。tagは検証済みのRelease commitを指し、`vite-plugin-bem-modules-0.1.0.tgz`をassetとして配布している。
-- npm registryへの初回公開に向け、package versionを`0.1.1`へ進めて公開可能な設定へ切り替えた。npm registryへのpublish、tag、GitHub Releaseはまだ行っていない。
-- npm 11の`npm publish --dry-run`を通し、75ファイルのtarballをクリーンなVite 8 projectへ`npm install`して、build・型生成・CLIを確認した。`bin`はnpm 11が補正警告を出さない`dist/cli.js`表記とする。
-- Release commitではNode.js 22.13 / 24とUbuntu / Windows / macOSのCIが成功している。
+- 現行v0.1の保守起点は`maintenance/v0.1`に分離した。このbranchは`6ee6802f11fb3d76bb512226c14880e9c8354ec8`を指し、v0.1の公開準備と保守だけを扱う。
+- v0.2の設計・実装は`feat/v0.2-rebuild`で進める。現時点の製品`src/`と`package.json`はv0.1のままで、作り直しの製品実装は始まっていない。
+- `REBUILD-SPEC.md`をv0.2の契約として更新し、構文解析、class-only型生成、双方向keyframes台帳、明示同期、Vite標準HMRの隔離試作結果を反映した。
+- v0.1のnpm publish、tag、GitHub Releaseはこのbranchでは行わない。
 
 ## アクティブフェーズ
 
-公開準備の差分をcommitしてCIを確認し、npm publishの実行判断を待つ。
+`REBUILD-SPEC.md`の公開API未決定事項を解消し、製品実装計画を作れる状態にする。
 
 ## 今後のフェーズ
 
-npm publish後は、具体的なconsumer、Issue、互換性要求のいずれかが生じた時点で、対象を一つに絞って計画する。
+1. 命名設定、`globalScope`、Project設定、CLI、PostCSS plugin exportのv0.2 APIを確定する。
+2. 隔離試作の成立部分を製品`src/`へ移す実装計画を作る。
+3. PostCSS変換、Vite companion、型同期、警告台帳の順に製品実装し、`REBUILD-SPEC.md`の受け入れ条件を実行する。
+4. v0.1からの移行案内とv0.2のREADMEを整備する。
+
+## 作り直しの設計前提（現行v0.1とは別）
+
+- BEMを選ぶ以上、生成するclass名はグローバルなCSS名として扱う。ハッシュやpluginによる一意化を必須にせず、別ファイルとの名前衝突を許容する。
+- IDとkeyframesもグローバル名として扱い、従来の非class exportを維持するためだけに変換を複雑化しない。同名keyframesは既定で警告するが、ビルドは止めない。警告は衝突の発見を助けるもので、衝突がないことの保証ではない。
 
 ## 持ち越し
 
+- 全project CSS Moduleでハッシュを使わない案を隔離試作した。Vite 8.2.1の`css.modules.generateScopedName`をpluginの`config`から設定し、`@block`宣言をpre-transformで台帳化すると、buildでは宣言ありCSSとSass mixin生成classをBEM名、宣言なしCSS Moduleを元のclass名のままCSS・JS exportへ反映できた。`:global`のclassも変更されない。devの`transformRequest`でもSass partial変更後にCSS・exportが更新された。したがって「無宣言ファイルで既定ハッシュを維持する」ことに由来する旧案の委譲問題は、この要件変更では消える。ただし生成フックはIDと`@keyframes`にも呼ばれ、名前だけで一律にBEM化すると両者まで変わる。実験では第4引数のselector nodeで通常のclassだけを選別できたが、公開型は3引数であり、他のclass構文も含めた完全な判定は未解決。型生成、ブラウザHMR、既存のCSS Modules設定との競合、依存パッケージへの適用範囲も未検証で、方式の採用は保留する。
+- IDとキーフレームの事前`:global`化も隔離試作した。同名の`.fade`・`#fade`・`@keyframes fade`を手書きでglobal指定した場合と、Sass mixin生成後にPostCSS pluginでID・keyframes・animation参照をglobal化した場合の両方で、Vite 8.2.1のbuildは名前生成フックをclassにだけ呼び、CSSとJS exportが一致した。後者はdevの`transformRequest`でも通った。ただし実験の自動ラップは固定名の文字列置換で、製品ではCSS/selector/valueの構文解析が必要。global化したID・keyframesは従来のlocal exportから消えるが、作り直しではその維持を必須条件にしない。製品には未採用。
+- 非class exportの比較（Vite 8.2.1、現行plugin、ハッシュなしの隔離build）: `@keyframes spin`を`:global(spin)`にすると生成CSSは同じでもJS importと隣接`.d.ts`から`spin`が消えた。衝突のない名前なら`:export { spin: spin }`で両方を保持できた。同名のclassとkeyframesでは、非classをglobal化するとclassの`fade` exportは保てるが、同じ`fade`キーでkeyframes値も公開することはできない。別名`:export { fadeAnimation: fade }`の試行は現行pluginの`BEM009`になり、この経路での別名維持は未確認。現行plugin自体も`@block`付きファイルのlocal ID、classと同名のlocal keyframes、Sass mixin生成のlocal ID/keyframesでは`BEM009`になる。作り直しではclassのTS APIを中心に据え、keyframes exportの互換維持だけを目的とする複雑化は避ける。
+- global keyframesのファイル間衝突（Vite 8.2.1の隔離build）: `p-card`と`p-modal`がそれぞれ異なる`@keyframes fade`を持つと、両classの`animation`参照は同じ`fade`になり、import順に従って2定義の出力順が入れ替わった。CSS Animations仕様では後の同名定義だけが使われる。別名の`slide`は`animation-name`と一致した。既定警告で観測するファイル集合とdev時の更新方法は未設計。ブラウザHMRと実際の表示は未検証。
+- PostCSS設定の採用方針（製品未実装）: 利用者が`vite.config`の`css.postcss.plugins`にBEM用PostCSS pluginと他に使うpluginを明示登録する。Vite pluginはPostCSS pluginを自動挿入せず、`configResolved`でBEM用登録がなければ起動時に失敗させる。Vite 8.2.1の隔離buildでは手書き登録でCSSとexportが一致し、他のpluginとの実行順序も指定どおりだった。登録なしの場合は外部`postcss.config.mjs`が存在しても検証で失敗できた。インライン指定時は外部設定が無視されるため、利用者は必要な設定をインラインへ移す。製品向けの構文解析、他のPostCSS pluginの後段フックとの順序、dev/HMRは未検証。
+- 旧前提（無宣言ファイルは既定ハッシュを維持）での再設計案（未採用）: Vite 8の`css.modules.generateScopedName`はCSS Module全体に適用され、公開APIにはファイル単位で既定生成へ委譲する手段が見当たらない。既定ハッシュ計算のコピーは、`@block`のないファイルを通常のCSS Modulesとして扱う要件に対して脆い。さらに公開型は3引数だが、内部実装は第4引数にselector nodeを渡す場合がある。`.class`と`#id`は区別できる一方、`[class=…]`、宣言値の`:local(…)`、`@keyframes`はnodeなしで呼ばれるため、この引数だけではBEM対象のclassを漏れなく判定できない。名前生成フック単独を主経路と決めず、`@block`のあるファイルだけに介入する経路、同名ケース、PostCSS設定の共存を隔離試作で確認してから方式を選ぶ。
+- 隔離試作では、Sass展開後のPostCSS処理で`@block`付きファイルだけを書き換え、無宣言ファイルの既定ハッシュ、`:global`、Sass mixin由来のclassを確認した。PostCSS設定へ明示登録する方式はCJS・ESM両方で動いた。Vite pluginの`config`から`css.postcss`を伝搬することもでき、既存のインラインpluginsは設定マージで残る。一方、外部の`postcss.config.*`はインライン指定によって探索されなくなるため、一律のインライン指定は採用しない。Viteの実験的`preprocessCSS`を使う別経路はbuildできたが、CSSが二重にPostCSS処理され、Sass partial更新時にCSS側のmodule graphが自動で無効化されなかったため、主経路には選ばない。
+- 別案の隔離試作では、`config`でCSS Modulesの`getJSON`を登録し、Vite標準CSS変換の前後に通常のVite plugin transformを置いた。`getJSON`で得た実際のclass名をCSSとJS exportの両側でBEM名へ置換でき、外部の`postcss.config.*`は保持され、PostCSSは一回だけ実行された。無宣言ファイルは既定ハッシュのままで、Sass partial変更時のJS exportとCSSもVite標準の監視で更新された。ただし`getJSON`の引数変更は公開APIの保証がなく、後段でのJS export書き換えもVite生成形式に依存する。事前に同名の`:export`を追加してJS書き換えを避ける案も、Vite 8.2.1でSass mixin由来のclassを含むbuildを試すと、同名のclass exportが優先されてハッシュ値のままだった。`:export`を`@use`の後・末尾のどちらに置いても変わらず、別名のexportだけがBEM値を保持した。このため事前の`:export`だけではCSSと既存JS APIの一致を保証できない。採用前にselectorとexportの安定した変更点、既存`getJSON`との共存、ブラウザHMR、Vite version matrixを確認する。既定ハッシュ計算のコピーと外部PostCSS設定の再読み込みは前提にしない。
+- 2026-09-19のstep2隔離parser試作を`scratch/step2-parser-spike`に作成した。PostCSS AST、`postcss-selector-parser`、animation宣言値のトークンASTを使い、`@block`付きのlocal classだけをBEM化し、`:global` class、ID、keyframes、`animation` / `animation-name`参照をglobal化した。Vite 8.2.1のSass展開・PostCSS・CSS Modulesをそのまま通すfixtureで、CSS/SCSS mixin由来class、同じ綴りの`.fade`・`#fade`・`@keyframes fade`、同名keyframesの警告、PostCSS配列順、`@block`なしmoduleの既定hash、CSS出力とJS import値を4テストで確認した。`/Users/minos/.agents/bin/agent-test -- node scratch/step2-parser-spike/run-tests.mjs` はexit 0、pass 4、fail 0だった。最初のREDは未実装moduleの`ERR_MODULE_NOT_FOUND`で、実装後にfixture entryと値文法を補正した。
+- 上記試作で、selectorのglobal scopeは`:global(...)`だが、宣言値はVite CSS Modulesが`global(...)` functionをglobal markerとして解釈することを観測した。値側を`:global(fade)`にすると最終CSSが`:fade`になったため、`global(fade)`へ変更して最終CSSを`fade`に揃えた。これは構文境界を越えた固定文字列置換を避けるための実装判断である。animation値parserは標準的なshorthand/nameの静的identifierを対象とし、`var()`や高度なSass由来の動的値、ブラウザ実Vite HMR、`.d.ts`、Vite version matrixは未検証である。REBUILD-SPEC.mdの契約変更は提案していない。
+- 2026-09-19のstep3隔離検証を`scratch/step2-parser-spike/step3-runtime-verification.mjs`で実施した。`/Users/minos/.agents/bin/agent-test -- node scratch/step2-parser-spike/step3-runtime-verification.mjs`（ローカルlisten許可付き）はexit 0、Node testは対象1、pass 1、fail 0だった。結果JSONは[`scratch/step2-parser-spike/step3-results.json`](scratch/step2-parser-spike/step3-results.json)に保存した。
+  - Vite 8.2.1のbuildで、CSSとJS default importのclass値を照合した。CSS/SCSSの`root`、Element、Modifier、Sass mixin由来class、`:global(.utility)`、ID、keyframes、静的な`animation` / `animation-name`、`var(--runtime-animation)`を確認し、`@block`なしModuleは既定hash `_root_7havg_1`のまま、後段PostCSS pluginのcustom propertyも変換後ASTを観測した。重複`fade`は警告のみでbuildは成功した。
+  - `Card.module.css`、`Card.module.scss`、`Plain.module.css`、`Modal.module.css`の隣接`.d.ts`はすべて存在せず、現行step2試作に型生成はない。runtimeのclass key/valueからclass-only declarationを隔離runner内で最小投影すると整合したが、これは製品実装・型配布方式の決定ではない。候補は、隣接`.d.ts`生成、利用者側型生成、Vite周辺の既存型生成のいずれかであり、class-only APIを正本にして比較する必要がある。
+  - 実dev serverではHTTP 200、`transformRequest`、`ssrLoadModule`を確認した。Sass partial変更はCSSの`padding: 12px`へ反映し、CSS Module変更では`addedLater: "p-card__added-later"`がCSSとJS import値へ反映した。Module追加、import削除、Module unlinkをwatcherで確認し、Viteの`handleHotUpdate` probeでpartial、CSS、main.js、keyframes変更の更新対象moduleを記録した。ブラウザWebSocketは接続できず、実ブラウザ表示とclient受信HMR payloadは未検証である。
+  - keyframes警告は、初期の同名`fade`で発生し、Modalの名前変更後は実体CSSから旧名が消えた。`Modal.module.css`の参照を`modal-replacement`へ変え、同ファイル内の`@keyframes modal-fade`定義を削除した後、Card側に同名`@keyframes modal-fade`を追加して再処理すると、keyframes定義を削除した`Modal.module.css`を指すduplicate warningが再発した。step2 registryはfile/name登録を撤回しないため、devでの登録・変更・削除・警告deduplicateは製品採用前の必須設計課題である。
+  - Vite 6/7 matrix、browser HMR、依存変更を伴う検証は実施していない。今回の変更は`src`、現行`SPEC.md`、依存定義、公開・tag関連へ及んでいない。次の採用判断では、(A) module graph由来の現在集合を再計算する警告registry、(B) buildだけの警告とdev再計算を分離するregistry、(C) keyframes警告を初期段階でclass APIから切り離して保留する、の比較と、型生成方式・Vite version matrixを先に決める。既定の警告検出集合を推測で契約化しない。
+- 2026-09-19のstep4隔離検証を`scratch/step2-parser-spike`へ追加した。`class-map-dts.mjs`の所有marker付きwriterをparserのclass対応表と直結し、同じMapからPostCSSの`:export`と隣接`*.module.css.d.ts` / `*.module.scss.d.ts`を生成する。宣言はclass keyだけを`readonly key: string`で持ち、ID、keyframes、`@value`、手書き`:export`、`:global` classは含めない。markerのない手書きd.tsは保護し、生成内容が同じ場合はmtimeを変えない。Vite build/devでCard CSS、Card SCSS、Modal CSSの宣言を生成し、Sass mixin由来classを含むruntime keyとd.ts keyが一致した。`@block`なしのPlain CSSは生成対象外とし、`@block`削除とsource unlinkでは所有宣言を削除する。一方、import到達性だけを失ったModuleの宣言はsource unlinkまで残るため、dev companionの所有範囲はimport graphの自動pruneを含めず、未import Moduleの一括同期は明示runnerまたは将来CLIへ分ける境界とした。
+- 同じstep4で`keyframes-registry.mjs`を追加し、`fileToNames`と`nameToFiles`を双方向に保持する。各fileの再処理は旧集合を外して新集合に置き換え、同一file内の重複定義を一つにまとめる。複数fileの衝突はnameごとに一度のwarningへまとめ、rename、定義削除、`@block`削除、source unlink後に旧fileを指す警告を残さず、衝突解消後の再登録も確認した。Viteで実際に処理された`@block` Moduleを候補集合として観測したもので、通常Module、依存package、virtual Moduleを契約化する根拠にはしていない。
+- step4の実測は、`/Users/minos/.agents/bin/agent-test -- node --test scratch/step2-parser-spike/class-map-dts.test.mjs scratch/step2-parser-spike/keyframes-registry.test.mjs` が対象4、pass 4、fail 0、既存step2回帰が対象4、pass 4、step3 build/devが対象1、pass 1だった。`/Users/minos/.agents/bin/agent-test -- node scratch/step2-parser-spike/explicit-dts-sync.mjs` もexit 0で、未importの`Unimported.module.scss`を含む5 Moduleを明示同期し、Sass展開後の`root`とmixin由来2 keyを生成した。実ブラウザHMR、Vite 6/7、依存package・virtual Module、未import Moduleの製品CLI統合は未検証である。製品`src`、現行`SPEC.md`、`package.json`、lockfile、公開・tag関連は変更していない。
+- 2026-09-19にVite 8.2.1の実ブラウザ隔離検証を`scratch/step2-parser-spike/browser-hmr-runner.mjs`で実施した。runnerは既存fixtureを一時rootへコピーし、同一originのphase endpointからCSS/SCSS/keyframes/d.tsを変更するため、tracked fixtureを変更せず終了時にserver・一時rootを破棄する。class、Sass、keyframesの主検証URLは`http://127.0.0.1:51341/`、d.tsの手書き保護・import済みsource unlinkの再検証URLは`http://127.0.0.1:51724/`だった。viewportは固定せず、screenshotは取得していない。視覚レイアウトではなくDOM、computed style、CSSRule、runtime state、consoleを観測した。
+  - runner初回起動で既存`parser-plugin.mjs`が`KeyframesRegistry`を再exportしていないことを確認し、製品srcを変更せず`keyframes-registry.mjs`から直接importする隔離側の修正で継続した。
+  - 初期描画で`p-card`、`p-card__dialog`、`p-card__from-mixin`、`p-modal`と、`@block`なしModuleの`_root_7havg_1`を確認した。Cardの`animationName`は`slide, fade`、Modalは`fade`、Sass mixin classのpaddingは`4px`だった。Vite client consoleは`[vite] connected.`を出し、初期のregistryはCard/Modal双方の`fade`を衝突として持ち、隣接d.tsはCard CSS/SCSS/Modalだけに所有marker付きで生成され、Plainには生成されなかった。
+  - CSS Moduleのclass追加・改名・宣言値変更後、DOMは`p-card__badge`、`p-card__panel`へ変わり、JS default importも`badge` / `panel`を持って`dialog`を失った。computed styleはbadgeのbackground `rgb(40, 50, 60)`、panelのcolor `rgb(10, 20, 30)`、rootのcolor `rgb(12, 34, 56)`で、CSSとimport値が一致した。Sass partial変更後は`p-card__from-mixin--hot`が追加され、既存mixin classのpaddingは`24px`、追加classは`16px`でimport値と一致した。
+  - class、Sass、keyframesの各変更でbrowser entryの`hmrCount`は0のまま`loadCount`が増え、Vite consoleは`hot updated: /src/main.js`を出した。つまりWebSocket接続自体は維持されたが、direct CSS accept callbackによるページ内更新ではなく、main importerの再評価とページ全体reloadに依存した。source unlinkでは`vite:beforeFullReload`の`*`と`Failed to reload /src/main.js`を観測した。これはimport中のsourceを削除した後の既知の壊れ方として残す。
+  - keyframesのrename後はブラウザの`animationName`が`modal-fade`になり、旧`fade`のModal登録がregistryから消えた。内容変更後はCSSRuleで`0.25` / `0.75`を確認した。Modal定義を削除し、Card側へ同名`modal-fade`を移した後は、ブラウザの参照とCSSRuleがCard側の`0.4` / `0.6`へ更新され、registryはCardだけ（`fade`、`modal-fade`、`slide`）となり`conflicts: []`、最後のModal処理のwarningは空になった。2ファイルを順に書き換えた中間では一時的なduplicate warningが出たため、更新を原子的に扱う設計は未解決である。
+  - class変更後の所有d.tsは`badge` / `panel`を含み`dialog`を含まなかった。`@block`削除ではModalの所有d.tsが消え、Plainは生成されなかった。手書きmarkerなしのManual d.tsは内容を変えず保護された。未importのDisposableを`transformRequest`後にunlinkした試行ではd.tsが残った（`removed: false`）が、ブラウザがimportしているModalをunlinkした再試行では`removed: true`となり、Modalのd.tsとregistry登録が消えた。したがってimport済みsource unlinkは確認済み、未import Moduleのwatcher自動pruneは未達であり、明示同期との責務分離を維持する。
+  - `/Users/minos/.agents/bin/agent-test -- node --check scratch/step2-parser-spike/browser-hmr-runner.mjs` はexit 0。`/Users/minos/.agents/bin/agent-test -- node --test scratch/step2-parser-spike/class-map-dts.test.mjs scratch/step2-parser-spike/keyframes-registry.test.mjs` は対象4 / pass 4、`/Users/minos/.agents/bin/agent-test -- node scratch/step2-parser-spike/run-tests.mjs` は対象4 / pass 4、`/Users/minos/.agents/bin/agent-test -- node scratch/step2-parser-spike/step3-runtime-verification.mjs` はlisten許可付きで対象1 / pass 1、`explicit-dts-sync.mjs`はexit 0で対象5 Module、`/Users/minos/.agents/bin/agent-test -- pnpm test`（pnpm 11.9.0）は対象136 / pass 136 / fail 0だった。step3のsandbox内初回実行だけは`listen ::1 EPERM`で失敗し、依存変更なしのlisten許可付き再実行で通過した。
+  - 製品`src`、現行`SPEC.md`、`REBUILD-SPEC.md`、`package.json`、`pnpm-lock.yaml`、公開/tag関連は変更していない。主検証後にrunnerのPTYはexit 0で終了し、一時rootは残っていない。実ブラウザHMRがページ全体reloadに依存し、未import unlinkとimport中source削除後のreloadエラーが残るため、この隔離検証だけを根拠に製品実装へ直ちに採用する判断は保留する。次段では、HMRをreloadで許容するか、d.ts書き込みをwatcherから除外するか、source unlink時のimporter処理とkeyframes更新の原子性を先に決める。
+- 2026-09-19のHMR再診断で、上記step4ブラウザ記録の「`hmrCount`は0のまま`loadCount`が増えたためページ全体reloadに依存した」という判定を訂正した。診断用runnerにwindow/document nonce、`performance.timeOrigin`、navigation entry、`beforeunload` / `pagehide`、Vite HMR payload、accept callback、DOM identity、`handleHotUpdate`のmodule graphを追加し、Vite 8.2.1の実ブラウザで同一documentのmodule再評価とdocument reloadを区別した。動的な`import.meta.hot.accept(name, ...)`ではclass変更時のpayloadが`path: /src/main.js`・`acceptedPath: /src/main.js`となり、`loadCount` / `evaluationCount`だけが増えたが、document nonce・`timeOrigin`は不変、navigation typeは`navigate`のまま、`beforeunload` / `pagehide`は0、DOM identityは全てtrue、`vite:beforeFullReload`は空だった。これはページreloadではなく、Viteがbrowser entryを再評価していた現象である。動的specifierはViteの静的なdirect dependency acceptとして扱われないため、accept callbackも実行されなかった。
+  - runnerの`BEM_HMR_ACCEPT=literal`で`import.meta.hot.accept("./Card.module.css", ...)`等の静的literal登録へ切り替えると、class追加・削除・改名、Sass partial変更、keyframes rename・内容変更の全てで`loadCount` / `evaluationCount`は1のまま、document nonce・`timeOrigin`は不変、lifecycleは0、DOM identityは全true、`fullReloadEvents`は空だった。payloadは`acceptedPath: /src/Card.module.css`、`/src/Card.module.scss`、`/src/Modal.module.css`となり、accept callbackとJS default import値が更新された。computed styleはclass変更でroot `rgb(12, 34, 56)`、badge `rgb(40, 50, 60)`、panel `rgb(10, 20, 30)`、Sassで`24px` / `16px`、keyframes内容でCSSRuleの`0.25` / `0.75`を確認した。keyframes renameでは`animationName: modal-fade`とCSSRuleが更新され、registryの旧`fade`登録も消えた。
+  - plain Vite CSS Modules（BEM PostCSS、companion、d.ts writer、keyframes registryなし）を同じliteral acceptで対照にしたところ、classとSassのpayload・document指標は同じで、CSS Modulesのhyphenated export keyも含めDOM/computed styleが更新された。full構成からd.ts writerだけを外した`no-dts`では隣接`.d.ts`由来の空module graphイベントだけが消え、`no-companion`ではCSS module payloadは変わらず、`no-registry`では警告・registryだけが空になった。従って通常HMRのdocument reload判定を生んだ原因はBEM PostCSS、companion、d.ts writer、keyframes registry/watcherではなく、runnerの動的acceptである。self acceptはCSS dependencyのdefault import値を更新せず旧DOM/JS値が残り、acceptなしはCSS proxyのstyle更新とJS export同期を分離するため、いずれもclass APIの更新経路には採用しない。
+  - import中の`Modal.module.css`をunlinkした場合は通常更新と異なり、隣接d.tsとregistry登録は削除されたが、browser consoleに`Failed to reload /src/Modal.module.css`が出て、Modalの旧JS値/DOMが残った。これは解決不能なimportを伴うため、通常の宣言値・partial・keyframes内容更新のHMR契約から分離する。2ファイルを順に変更した際の一時duplicate warningも引き続き原子性の未解決境界である。
+  - 今回成立した最小修正は隔離browser harnessの静的literal acceptであり、製品srcのHMR再実装ではない。`parser-plugin.mjs`にはregistry影響を比較するため診断用`keyframes: false`経路を追加したが、製品実装へ採用する変更ではない。製品への判断は、BEM pluginがVite標準CSS変換・HMRへ委譲する方針を維持し、browser harnessのacceptを静的specifierで記述してから再評価する。今回の変更は`scratch/step2-parser-spike`内のrunner/plugin copyとこの観測追記だけで、製品`src`、`SPEC.md`、`REBUILD-SPEC.md`、依存定義、公開/tag関連は変更していない。
 - Windowsの実Vite watcherを使うdev E2Eはlibuv assertion回避のためskipしている。`hotUpdate`直接経路は検証済みだが、CI greenをwatcher E2E完了とは扱わない。
 - Vite 6 / 7は互換性matrixを実行してからpeer rangeへの追加を判断する。
 - framework固有virtual CSS Moduleは、identity・HMR・`.d.ts`所有を別契約として設計する。
@@ -24,9 +65,7 @@ npm publish後は、具体的なconsumer、Issue、互換性要求のいずれ�
 - Compiler / Project低レベルAPIのpackage root公開は、実consumerが現れた場合に検討する。
 - GitHub ActionsがNode.js 20対象のactionをNode.js 24で強制実行している警告は、各actionの対応versionを確認してから更新する。
 
-## 公開時に残る作業
+## v0.1保守との境界
 
-- `CHANGELOG.md`の`0.1.1`へ公開日を入れる。
-- npm accountと公開権限を確認し、`npm publish`を実行する。
-- 公開された`vite-plugin-bem-modules@0.1.1`をregistryから取得できることを確認する。
-- 検証済みcommitへ`v0.1.1`tagとGitHub Releaseを作成する。
+- v0.1のnpm publish、公開確認、tag、GitHub Releaseは`maintenance/v0.1`で扱う。
+- v0.2の試作や実装を理由に、v0.1のpackage、tag、公開成果物を変更しない。

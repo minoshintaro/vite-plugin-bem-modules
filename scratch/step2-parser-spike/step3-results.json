@@ -1,0 +1,386 @@
+{
+  "runtime": {
+    "node": "v24.15.0",
+    "vite": "8.2.1",
+    "packageManager": "pnpm 11.9.0"
+  },
+  "build": {
+    "outputFiles": {
+      "css": "bundle.css",
+      "js": "bundle.js"
+    },
+    "cssHas": {
+      "bemRoot": true,
+      "mixinClass": true,
+      "modifier": true,
+      "globalClass": true,
+      "globalId": true,
+      "globalKeyframes": true,
+      "staticAnimationName": true,
+      "dynamicVarPreserved": true,
+      "postcssOrderProbeAfterBem": true,
+      "sourceBlockRemoved": true
+    },
+    "exports": {
+      "card": {
+        "child": "p-card__child",
+        "dialog": "p-card__dialog",
+        "dynamic": "p-card__dynamic",
+        "fade": "p-card__fade",
+        "root": "p-card",
+        "rootCompact": "p-card--compact",
+        "static": "p-card__static"
+      },
+      "scss": {
+        "fromMixin": "p-card__from-mixin",
+        "fromMixinActive": "p-card__from-mixin--active",
+        "root": "p-card"
+      },
+      "plain": {
+        "root": "_root_7havg_1"
+      },
+      "modal": {
+        "root": "p-modal"
+      }
+    },
+    "warnings": [
+      "\nA PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.",
+      "[vite:css][postcss] duplicate global keyframes \"fade\" also seen in /Users/minos/Repos/Me/vite-plugin-bem-modules/scratch/step2-parser-spike/.tmp-step3-runtime/src/Card.module.css\n",
+      "\nA PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue."
+    ]
+  },
+  "dts": {
+    "card": {
+      "source": "Card.module.css",
+      "declarations": [
+        "/Users/minos/Repos/Me/vite-plugin-bem-modules/scratch/step2-parser-spike/.tmp-step3-runtime/src/Card.module.css.d.ts"
+      ],
+      "status": "present",
+      "contents": "/* vite-plugin-bem-modules: generated */\ndeclare const styles: {\n  readonly child: string;\n  readonly dialog: string;\n  readonly dynamic: string;\n  readonly fade: string;\n  readonly root: string;\n  readonly rootCompact: string;\n  readonly static: string;\n};\nexport default styles;\n",
+      "classKeys": [
+        "child",
+        "dialog",
+        "dynamic",
+        "fade",
+        "root",
+        "rootCompact",
+        "static"
+      ],
+      "runtimeClassKeys": [
+        "child",
+        "dialog",
+        "dynamic",
+        "fade",
+        "root",
+        "rootCompact",
+        "static"
+      ]
+    },
+    "scss": {
+      "source": "Card.module.scss",
+      "declarations": [
+        "/Users/minos/Repos/Me/vite-plugin-bem-modules/scratch/step2-parser-spike/.tmp-step3-runtime/src/Card.module.scss.d.ts"
+      ],
+      "status": "present",
+      "contents": "/* vite-plugin-bem-modules: generated */\ndeclare const styles: {\n  readonly fromMixin: string;\n  readonly fromMixinActive: string;\n  readonly root: string;\n};\nexport default styles;\n",
+      "classKeys": [
+        "fromMixin",
+        "fromMixinActive",
+        "root"
+      ],
+      "runtimeClassKeys": [
+        "fromMixin",
+        "fromMixinActive",
+        "root"
+      ]
+    },
+    "plain": {
+      "source": "Plain.module.css",
+      "declarations": [],
+      "status": "missing",
+      "contents": null,
+      "classKeys": [],
+      "runtimeClassKeys": [
+        "root"
+      ]
+    },
+    "modal": {
+      "source": "Modal.module.css",
+      "declarations": [
+        "/Users/minos/Repos/Me/vite-plugin-bem-modules/scratch/step2-parser-spike/.tmp-step3-runtime/src/Modal.module.css.d.ts"
+      ],
+      "status": "present",
+      "contents": "/* vite-plugin-bem-modules: generated */\ndeclare const styles: {\n  readonly root: string;\n};\nexport default styles;\n",
+      "classKeys": [
+        "root"
+      ],
+      "runtimeClassKeys": [
+        "root"
+      ]
+    },
+    "protected": {
+      "source": "Protected.module.css",
+      "declarations": [
+        "/Users/minos/Repos/Me/vite-plugin-bem-modules/scratch/step2-parser-spike/.tmp-step3-runtime/src/Protected.module.css.d.ts"
+      ],
+      "status": "present",
+      "contents": "// hand-written declaration\nexport default {};\n",
+      "classKeys": [],
+      "runtimeClassKeys": []
+    },
+    "minimumProjection": {
+      "scope": "verification-only, not product implementation",
+      "classKeysAndValues": {
+        "card": "declare const styles: {\n  readonly child: \"p-card__child\";\n  readonly dialog: \"p-card__dialog\";\n  readonly dynamic: \"p-card__dynamic\";\n  readonly fade: \"p-card__fade\";\n  readonly root: \"p-card\";\n  readonly rootCompact: \"p-card--compact\";\n  readonly static: \"p-card__static\";\n};\nexport default styles;\n",
+        "scss": "declare const styles: {\n  readonly fromMixin: \"p-card__from-mixin\";\n  readonly fromMixinActive: \"p-card__from-mixin--active\";\n  readonly root: \"p-card\";\n};\nexport default styles;\n",
+        "plain": "declare const styles: {\n  readonly root: \"_root_7havg_1\";\n};\nexport default styles;\n",
+        "modal": "declare const styles: {\n  readonly root: \"p-modal\";\n};\nexport default styles;\n"
+      },
+      "status": "runtime-to-class-only-projection-matches-by-construction"
+    }
+  },
+  "dev": {
+    "mutations": [
+      {
+        "label": "Sass partial change updates transformed CSS and HMR",
+        "watcherEvent": "change",
+        "hmr": [],
+        "handleHotUpdate": [
+          {
+            "file": "/Users/minos/Repos/Me/vite-plugin-bem-modules/scratch/step2-parser-spike/.tmp-step3-runtime/src/mixins.scss",
+            "modules": [
+              "/@fs//Users/minos/Repos/Me/vite-plugin-bem-modules/scratch/step2-parser-spike/.tmp-step3-runtime/src/mixins.scss",
+              "/@fs//Users/minos/Repos/Me/vite-plugin-bem-modules/scratch/step2-parser-spike/.tmp-step3-runtime/src/mixins.scss"
+            ]
+          }
+        ],
+        "warnings": []
+      },
+      {
+        "label": "CSS Module change updates CSS and JS import value",
+        "watcherEvent": "change",
+        "hmr": [],
+        "handleHotUpdate": [
+          {
+            "file": "/Users/minos/Repos/Me/vite-plugin-bem-modules/scratch/step2-parser-spike/.tmp-step3-runtime/src/Card.module.css",
+            "modules": [
+              "/src/Card.module.css"
+            ]
+          }
+        ],
+        "warnings": []
+      },
+      {
+        "label": "Renaming a keyframes definition updates the dev warning state",
+        "watcherEvent": "change",
+        "hmr": [],
+        "handleHotUpdate": [
+          {
+            "file": "/Users/minos/Repos/Me/vite-plugin-bem-modules/scratch/step2-parser-spike/.tmp-step3-runtime/src/Modal.module.css",
+            "modules": [
+              "/src/Modal.module.css"
+            ]
+          }
+        ],
+        "warnings": []
+      },
+      {
+        "label": "Adding a CSS Module and importing it emits HMR",
+        "watcherEvent": "change",
+        "hmr": [],
+        "handleHotUpdate": [
+          {
+            "file": "/Users/minos/Repos/Me/vite-plugin-bem-modules/scratch/step2-parser-spike/.tmp-step3-runtime/src/main.js",
+            "modules": [
+              "/src/main.js"
+            ]
+          }
+        ],
+        "warnings": []
+      },
+      {
+        "label": "Removing the import then deleting the CSS Module emits invalidation",
+        "watcherEvent": "change",
+        "hmr": [],
+        "handleHotUpdate": [
+          {
+            "file": "/Users/minos/Repos/Me/vite-plugin-bem-modules/scratch/step2-parser-spike/.tmp-step3-runtime/src/main.js",
+            "modules": [
+              "/src/main.js"
+            ]
+          }
+        ],
+        "warnings": []
+      },
+      {
+        "label": "Deleting the CSS Module removes the file from the watched graph",
+        "watcherEvent": "unlink",
+        "hmr": [],
+        "handleHotUpdate": [],
+        "warnings": []
+      },
+      {
+        "label": "Removing a keyframes name tests warning retraction",
+        "watcherEvent": "change",
+        "hmr": [],
+        "handleHotUpdate": [
+          {
+            "file": "/Users/minos/Repos/Me/vite-plugin-bem-modules/scratch/step2-parser-spike/.tmp-step3-runtime/src/Modal.module.css",
+            "modules": [
+              "/src/Modal.module.css"
+            ]
+          }
+        ],
+        "warnings": []
+      },
+      {
+        "label": "Reprocessing a former keyframes name confirms stale registration is gone",
+        "watcherEvent": "change",
+        "hmr": [],
+        "handleHotUpdate": [
+          {
+            "file": "/Users/minos/Repos/Me/vite-plugin-bem-modules/scratch/step2-parser-spike/.tmp-step3-runtime/src/Card.module.css",
+            "modules": [
+              "/src/Card.module.css"
+            ]
+          }
+        ],
+        "warnings": [
+          "\nA PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue."
+        ]
+      },
+      {
+        "label": "Removing @block removes an owned declaration",
+        "watcherEvent": "change",
+        "hmr": [],
+        "handleHotUpdate": [
+          {
+            "file": "/Users/minos/Repos/Me/vite-plugin-bem-modules/scratch/step2-parser-spike/.tmp-step3-runtime/src/Modal.module.css",
+            "modules": [
+              "/src/Modal.module.css"
+            ]
+          }
+        ],
+        "warnings": []
+      }
+    ],
+    "hmrConnection": "unverified: WebSocket did not open",
+    "warnings": [
+      {
+        "phase": "after-modal-rename",
+        "messages": []
+      },
+      {
+        "phase": "after-modal-keyframes-removal",
+        "messages": [],
+        "interpretation": "The bidirectional registry replaces the Modal.module.css set, so the removed name has no stale registration."
+      },
+      {
+        "phase": "after-reprocess-using-removed-name",
+        "messages": [
+          "\nA PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue."
+        ],
+        "interpretation": "No stale duplicate warning is expected after Modal.module.css replacement; registry state is file-scoped and replaceable."
+      },
+      {
+        "phase": "all-server-warnings",
+        "messages": [
+          "\nA PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue."
+        ]
+      }
+    ],
+    "initial": {
+      "cardStyles": {
+        "child": "p-card__child",
+        "dialog": "p-card__dialog",
+        "dynamic": "p-card__dynamic",
+        "fade": "p-card__fade",
+        "root": "p-card",
+        "rootCompact": "p-card--compact",
+        "static": "p-card__static"
+      },
+      "scssStyles": {
+        "fromMixin": "p-card__from-mixin",
+        "fromMixinActive": "p-card__from-mixin--active",
+        "root": "p-card"
+      },
+      "plainStyles": {
+        "root": "_root_7havg_1"
+      },
+      "modalStyles": {
+        "root": "p-modal"
+      },
+      "cssTransformHasBem": true,
+      "plainModuleKeepsDefaultHash": true,
+      "globalClassNotExported": true,
+      "warnings": [
+        "\nA PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.",
+        "[vite:css][postcss] duplicate global keyframes \"fade\" also seen in /Users/minos/Repos/Me/vite-plugin-bem-modules/scratch/step2-parser-spike/.tmp-step3-runtime/src/Card.module.css\n",
+        "\nA PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.",
+        "\nA PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.",
+        "\nA PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue."
+      ]
+    },
+    "afterPartial": {
+      "cssTransformHasNewPadding": true,
+      "styles": {
+        "fromMixin": "p-card__from-mixin",
+        "fromMixinActive": "p-card__from-mixin--active",
+        "root": "p-card"
+      }
+    },
+    "afterCardChange": {
+      "styles": {
+        "addedLater": "p-card__added-later",
+        "child": "p-card__child",
+        "dialog": "p-card__dialog",
+        "dynamic": "p-card__dynamic",
+        "fade": "p-card__fade",
+        "root": "p-card",
+        "rootCompact": "p-card--compact",
+        "static": "p-card__static"
+      },
+      "cssHasNewElement": true,
+      "jsExportHasNewElement": true,
+      "dts": "/* vite-plugin-bem-modules: generated */\ndeclare const styles: {\n  readonly addedLater: string;\n  readonly child: string;\n  readonly dialog: string;\n  readonly dynamic: string;\n  readonly fade: string;\n  readonly root: string;\n  readonly rootCompact: string;\n  readonly static: string;\n};\nexport default styles;\n"
+    },
+    "afterAdd": {
+      "styles": {
+        "root": "p-added"
+      },
+      "warningMessages": [
+        "[vite:css][postcss] duplicate global keyframes \"modal-fade\" also seen in /Users/minos/Repos/Me/vite-plugin-bem-modules/scratch/step2-parser-spike/.tmp-step3-runtime/src/Modal.module.css\n"
+      ],
+      "importedClassIsBEM": true
+    },
+    "afterImportRemoval": {
+      "generatedDtsStillPresentUntilSourceUnlink": true
+    },
+    "afterSourceUnlink": {
+      "dtsExists": false,
+      "registryFilesForRemovedName": false
+    },
+    "afterKeyframesRemoval": {
+      "cssNoLongerContainsRemovedName": true,
+      "cssTransform": "import { createHotContext as __vite__createHotContext } from \"/@vite/client\";import.meta.hot = __vite__createHotContext(\"/src/Modal.module.css\");import { updateStyle as __vite__updateStyle, removeStyle as __vite__removeStyle } from \"/@vite/client\"\nconst __vite__id = \"/Users/minos/Repos/Me/vite-plugin-bem-modules/scratch/step2-parser-spike/.tmp-step3-runtime/src/Modal.module.css\"\nconst __vite__css = \".p-modal {\\n  animation-name: modal-replacement;\\n}\\n\\n\\n\"\n__vite__updateStyle(__vite__id, __vite__css)\nexport const root = \"p-modal\";\nexport default {\n\troot: root\n};\n\nimport.meta.hot.prune(() => __vite__removeStyle(__vite__id))"
+    },
+    "afterBlockRemoval": {
+      "dtsExists": false
+    },
+    "hmrMessages": []
+  },
+  "animationValues": {
+    "css": ":global(.p-values) {\n  animation: 1s ease global(static-spin), 200ms var(--runtime-animation);\n  animation-name: global(static-spin), var(--runtime-animation);\n}\n@keyframes :global(static-spin) { from { opacity: 0; } to { opacity: 1; } }\n:export {\n  root: p-values;\n}\n",
+    "staticIdentifierGlobalMarker": true,
+    "dynamicFunctionUntouched": true,
+    "notes": [
+      "Static identifiers are wrapped as global(name) for Vite CSS Modules value lowering.",
+      "var(--runtime-animation) remains a function token and is not guessed as an animation name."
+    ]
+  },
+  "limitations": [
+    "This runner does not create production files; all runtime edits are under scratch/.tmp-step3-runtime.",
+    "A browser connector is not available in this task, so visual rendering and browser-side HMR are not verified.",
+    "Vite 6/7 matrix is not run because only the repository-declared Vite 8.2.1 is installed; changing dependencies would exceed this isolated check."
+  ]
+}
