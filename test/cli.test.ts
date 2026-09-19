@@ -81,6 +81,30 @@ test("CLIはshared configのnamingと明示Project scopeをそのまま使う", 
   }
 });
 
+test("CLI syncはSass展開後のmixin由来classを隣接d.tsへ同期する", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-cli-sass-"));
+  try {
+    await fs.writeFile(
+      path.join(root, "_mixins.scss"),
+      "@mixin badge { .badge { color: red; } }\n",
+      "utf8",
+    );
+    const source = path.join(root, "Card.module.scss");
+    await fs.writeFile(
+      source,
+      `/* @block p-card */\n@use "./mixins" as *;\n.root { color: blue; }\n@include badge;\n`,
+      "utf8",
+    );
+
+    assert.match(runCli(root, "sync"), /^sync: 1 BEM CSS Module\(s\)\n$/);
+    const dts = await fs.readFile(`${source}.d.ts`, "utf8");
+    assert.match(dts, /readonly "root": string/);
+    assert.match(dts, /readonly "badge": string/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test("CLI syncは隣接型のsymlinkを生成時に拒否し、掃除でも参照先に触れない", async () => {
   const parent = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-cli-link-"));
   try {

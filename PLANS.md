@@ -13,6 +13,8 @@
 
 2026-09-19の製品実装では、ASTベースのclass / ID / keyframes lowering、class-only隣接型、双方向keyframes registry、明示的なPostCSS登録検証、Project-wide衝突許容、Vite標準HMR境界を`src/`へ移した。serveでは未import Moduleを自動同期せず、Viteが処理したModuleだけをPostCSS経由で型同期し、全体同期はCLI / buildの責務とした。この判断は、実dev検証でserve起動時の全体走査が未import型を先に生成することを観測したためである。
 
+今回の追補では、CLI / buildのSCSS同期をSass展開後のclass mapへ揃えた。最初にProject全体を単純に展開後だけ解析したところ、Sass `@extend` と暗黙BEM nestingの診断がBEM005から展開後のBEM003へ変わったため、source-level診断を先に行い、成功した場合だけ展開後schemaを採用する境界へ修正した。通常のHMRではこのProject解析を再利用せず、Viteと登録済みPostCSSへ委譲する。
+
 `CI=true /Users/minos/.agents/bin/agent-test -- pnpm test` は対象139 / pass 139 / fail 0、`CI=true /Users/minos/.agents/bin/agent-test -- pnpm check:typegen` もexit 0だった。Vite 8.2.1のbuild/devと直接hotUpdate境界を検証済み。ブラウザE2E、Vite 6/7 matrix、Windows watcherは未検証。
 
 ## 今後のフェーズ

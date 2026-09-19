@@ -336,7 +336,7 @@ test("既定のProject範囲は未importのBEM Moduleも同期対象にする", 
   }
 });
 
-test("Project範囲内の未importModuleもHMR更新でschemaを再解析する", async () => {
+test("Project範囲内の未importModuleもHMR更新では独自再解析しない", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-project-hmr-"));
   const cssFile = path.join(root, "Unused.module.css");
   try {
@@ -376,10 +376,10 @@ test("Project範囲内の未importModuleもHMR更新でschemaを再解析する"
         timestamp: Date.now(),
         modules: [cssNode] as never,
         server: {} as never,
-        read: async () => "/* @block p-unused */ .root {} .root--compact {}",
+        read: async () => { throw new Error("hotUpdate must not read source"); },
       },
     );
-    assert.deepEqual(result, [cssNode]);
+    assert.equal(result, undefined);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -454,9 +454,9 @@ test("HMRはCSS export projectionが不変ならCSS importerをinvalidateしな�
 
     const schemaChanged = await hotUpdate.call(
       { warn() {} } as never,
-      { ...context, read: async () => "/* @block p-card */ .root {} .root--large {}" },
+      { ...context, read: async () => { throw new Error("hotUpdate must not read source"); } },
     );
-    assert.deepEqual(schemaChanged, [cssNode, mainNode]);
+    assert.equal(schemaChanged, undefined);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -1510,7 +1510,7 @@ test("root外のBEM ModuleはProjectへ明示includeしたとき隣接d.tsを生
   }
 });
 
-test("HMRはProject scope外のroot外BEM ModuleをProjectへ登録しない", async () => {
+test("HMRはProject scope外のroot外BEM ModuleもVite標準の更新へ委譲する", async () => {
   const parent = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-external-hmr-out-of-scope-"));
   const root = path.join(parent, "app");
   const externalCss = path.join(parent, "Shared.module.css");
@@ -1550,17 +1550,18 @@ test("HMRはProject scope外のroot外BEM ModuleをProjectへ登録しない", a
         return filePath === externalCss ? new Set([externalNode]) : undefined;
       },
     };
-    await unwrapHook(cssPlugin.hotUpdate!).call(
+    const result = await unwrapHook(cssPlugin.hotUpdate!).call(
       { warn() {}, environment: { moduleGraph: graph } } as never,
       {
         type: "update",
         file: externalCss,
         timestamp: Date.now(),
         modules: [externalNode] as never,
-        read: async () => "/* @block shared */ .root {} .root--compact {}",
+        read: async () => { throw new Error("hotUpdate must not read source"); },
         server: {} as never,
       },
     );
+    assert.equal(result, undefined);
 
     await assert.rejects(() => fs.stat(`${externalCss}.d.ts`), { code: "ENOENT" });
   } finally {
@@ -1568,7 +1569,7 @@ test("HMRはProject scope外のroot外BEM ModuleをProjectへ登録しない", a
   }
 });
 
-test("HMRでProject scope外になったroot外BEM Moduleの生成d.tsを削除しない", async () => {
+test("HMRはProject scope内のroot外BEM Moduleの型を独自再解析しない", async () => {
   const parent = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-external-hmr-reconcile-"));
   const root = path.join(parent, "app");
   const externalCss = path.join(parent, "Shared.module.css");
@@ -1613,32 +1614,35 @@ test("HMRでProject scope外になったroot外BEM Moduleの生成d.tsを削除�
       },
     };
 
-    await unwrapHook(cssPlugin.hotUpdate!).call(
+    const result = await unwrapHook(cssPlugin.hotUpdate!).call(
       { warn() {}, environment: { moduleGraph: graph } } as never,
       {
         type: "update",
         file: externalCss,
         timestamp: Date.now(),
         modules: [externalNode] as never,
-        read: async () => "/* @block shared */ .root {} .root--compact {}",
+        read: async () => { throw new Error("hotUpdate must not read source"); },
         server: {} as never,
       },
     );
-    const updatedDts = await fs.readFile(`${externalCss}.d.ts`, "utf8");
-    assert.match(updatedDts, /readonly \"rootCompact\": string/);
+    assert.equal(result, undefined);
+    const unchangedDts = await fs.readFile(`${externalCss}.d.ts`, "utf8");
+    assert.match(unchangedDts, /readonly \"root\": string/);
+    assert.doesNotMatch(unchangedDts, /rootCompact/);
 
     externalNode.importers.clear();
-    await unwrapHook(cssPlugin.hotUpdate!).call(
+    const secondResult = await unwrapHook(cssPlugin.hotUpdate!).call(
       { warn() {}, environment: { moduleGraph: graph } } as never,
       {
         type: "update",
         file: externalCss,
         timestamp: Date.now(),
         modules: [externalNode] as never,
-        read: async () => "/* @block shared */ .root {} .root--compact {}",
+        read: async () => { throw new Error("hotUpdate must not read source"); },
         server: {} as never,
       },
     );
+    assert.equal(secondResult, undefined);
 
     await assert.doesNotReject(() => fs.stat(`${externalCss}.d.ts`));
   } finally {
@@ -1708,7 +1712,7 @@ test("hotUpdateが削除されたCSS Moduleの隣接d.tsを掃除する", async 
   }
 });
 
-test("types:false の hotUpdate でも生成済みd.tsを掃除する", async () => {
+test("types:false の削除HMRでも生成済みd.tsを掃除する", async () => {
   const root = await createFixture();
   const plugin = getCssPlugin({ types: false });
   const generatedHeader = "// Generated by vite-plugin-bem-modules. Do not edit.\n";
@@ -1720,18 +1724,19 @@ test("types:false の hotUpdate でも生成済みd.tsを掃除する", async ()
     await fs.writeFile(dtsFile, generatedHeader, "utf8");
     const hotUpdate = unwrapHook(plugin.hotUpdate!);
 
-    await hotUpdate.call(
+    const updateResult = await hotUpdate.call(
       { warn() {} } as never,
       {
         type: "update",
         file: cssFile,
         timestamp: Date.now(),
         modules: [],
-        read: async () => ".root {}",
+        read: async () => { throw new Error("hotUpdate must not read source"); },
         server: {} as never,
       },
     );
-    await assert.rejects(() => fs.stat(dtsFile), { code: "ENOENT" });
+    assert.equal(updateResult, undefined);
+    await assert.doesNotReject(() => fs.stat(dtsFile));
 
     await fs.writeFile(dtsFile, generatedHeader, "utf8");
     await fs.rm(cssFile);

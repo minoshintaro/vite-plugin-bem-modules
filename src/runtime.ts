@@ -2,17 +2,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type {
   ConfigEnv,
-  EnvironmentModuleNode,
   HotUpdateOptions,
   ResolvedConfig,
   UserConfig,
   ViteDevServer,
 } from "vite";
 import { createBemDiagnosticError } from "./diagnostics.js";
-import { compileBemModule } from "./compiler.js";
 import { createBemProjectIndex, type BemProjectIndex, type ProjectDtsMode } from "./project.js";
 import type {
-  BemModuleSchema,
   BemModulesOptions,
   ResolvedBemCompilerOptions,
   ResolvedBemModulesOptions,
@@ -22,7 +19,6 @@ import {
   isAdjacentDtsFile,
   isInNodeModules,
   isModuleFile,
-  isScriptModule,
   isVirtualModule,
   stripQuery,
 } from "./vite-utils.js";
@@ -44,62 +40,27 @@ type BemRuntime = {
   isOwnedCssModule(filePath: string): Promise<boolean>;
   transformCss(filePath: string, source: string): Promise<string | null>;
   handleBuildStart(): Promise<void>;
-  handleHotUpdate(context: HotUpdateOptions): Promise<EnvironmentModuleNode[] | void>;
+  handleHotUpdate(context: HotUpdateOptions): Promise<void>;
 };
 
 function findBemPostcssPlugin(value: unknown): BemPostcssPlugin | null {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = findBemPostcssPlugin(item);
-      if (found) return found;
-    }
-    return null;
+  if (!Array.isArray(value)) return null;
+  for (const item of value) {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) continue;
+    const candidate = item as Partial<BemPostcssPlugin>;
+    if (
+      candidate[BEM_POSTCSS_PLUGIN_MARKER] === true
+      && typeof candidate.configure === "function"
+      && typeof candidate.cleanup === "function"
+    ) return candidate as BemPostcssPlugin;
   }
-  if (typeof value !== "object" || value === null) return null;
-  const candidate = value as Partial<BemPostcssPlugin>;
-  return candidate[BEM_POSTCSS_PLUGIN_MARKER] === true
-    && typeof candidate.configure === "function"
-    && typeof candidate.cleanup === "function"
-    ? candidate as BemPostcssPlugin
-    : null;
+  return null;
 }
 
 function resolvedPostcssPlugin(config: ResolvedConfig): BemPostcssPlugin | null {
   const postcss = config.css.postcss as unknown;
   if (typeof postcss !== "object" || postcss === null) return null;
   return findBemPostcssPlugin((postcss as { plugins?: unknown }).plugins);
-}
-
-function collectAffectedModules(modules: readonly EnvironmentModuleNode[]): EnvironmentModuleNode[] {
-  const affected = new Set<EnvironmentModuleNode>(modules);
-  const queue = [...modules];
-  for (let index = 0; index < queue.length; index += 1) {
-    const current = queue[index]!;
-    for (const importer of current.importers) {
-      if (!isScriptModule(importer.id ?? "") || affected.has(importer)) continue;
-      affected.add(importer);
-      queue.push(importer);
-    }
-  }
-  return [...affected];
-}
-
-function cssProjectionMatches(previous: BemModuleSchema, next: BemModuleSchema): boolean {
-  const previousClassMap = Object.entries(previous.classMap).sort(([left], [right]) => left.localeCompare(right));
-  const nextClassMap = Object.entries(next.classMap).sort(([left], [right]) => left.localeCompare(right));
-  const previousExportMap = Object.entries(previous.exportMap).sort(([left], [right]) => left.localeCompare(right));
-  const nextExportMap = Object.entries(next.exportMap).sort(([left], [right]) => left.localeCompare(right));
-  const previousNonClassExports = [...previous.nonClassExportNames].sort();
-  const nextNonClassExports = [...next.nonClassExportNames].sort();
-  return JSON.stringify([
-    previousClassMap,
-    previousExportMap,
-    previousNonClassExports,
-  ]) === JSON.stringify([
-    nextClassMap,
-    nextExportMap,
-    nextNonClassExports,
-  ]);
 }
 
 function dtsModeFor(
@@ -154,25 +115,10 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
     globalScope: resolvedOptions.globalScope,
     modifierOutput: resolvedOptions.modifierOutput,
   };
-  const externalSchemas = new Map<string, BemModuleSchema>();
   let project: BemProjectIndex | null = null;
   let resolvedConfig: ResolvedConfig | null = null;
   let command: ConfigEnv["command"] = "serve";
   let postcssPlugin: BemPostcssPlugin | null = null;
-
-  const compile = async (filePath: string, source: string) => {
-    if (!project) return compileBemModule({ filePath, source, options: compilerOptions });
-    const canonical = canonicalFilePath(stripQuery(filePath));
-    try {
-      const result = await project.compile(canonical, source);
-      if (project.isInScope(canonical) || !result) externalSchemas.delete(canonical);
-      else externalSchemas.set(canonical, result.schema);
-      return result;
-    } catch (error) {
-      externalSchemas.delete(canonical);
-      throw error;
-    }
-  };
 
   return {
     options: resolvedOptions,
@@ -209,7 +155,6 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
         dtsMode: dtsModeFor(resolvedOptions, command) as BemPostcssDtsMode,
         keyframesRegistry: new KeyframesRegistry(),
       });
-      externalSchemas.clear();
     },
 
     config(config, env) {
@@ -274,27 +219,13 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
       if (!isModuleFile(context.file)) return;
 
       const canonical = canonicalFilePath(stripQuery(context.file));
-      const previousSchema = project?.getSchema(canonical) ?? externalSchemas.get(canonical);
       if (context.type === "delete") {
         await project?.remove(canonical);
         await postcssPlugin?.cleanup(canonical);
-        externalSchemas.delete(canonical);
-        return collectAffectedModules(context.modules);
+        return;
       }
-
-      let source: string;
-      try {
-        source = await context.read();
-      } catch (error) {
-        await project?.remove(canonical);
-        externalSchemas.delete(canonical);
-        throw error;
-      }
-      // Project.compile owns failure cleanup inside its mutation queue.
-      const result = await compile(canonical, source);
-      if (!result) return collectAffectedModules(context.modules);
-      if (previousSchema && cssProjectionMatches(previousSchema, result.schema)) return;
-      return collectAffectedModules(context.modules);
+      // Vite's module graph and the registered PostCSS plugin own regular
+      // update processing. Do not read, parse, or return importer modules here.
     },
   };
 }

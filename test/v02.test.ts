@@ -89,3 +89,26 @@ test("Vite companionはBEM PostCSS pluginの明示登録がない起動を拒否
     );
   });
 });
+
+test("Vite companionはPostCSS plugin配列のnested wrapperを暗黙展開しない", async () => {
+  await withTempRoot(async (root) => {
+    await fs.writeFile(path.join(root, "main.js"), "import './Card.module.css';\n", "utf8");
+    await fs.writeFile(path.join(root, "Card.module.css"), "/* @block p-card */\n.root {}\n", "utf8");
+
+    await assert.rejects(
+      build({
+        root,
+        configFile: false,
+        logLevel: "silent",
+        plugins: [bemModules({ types: false })],
+        css: {
+          postcss: {
+            plugins: [[createBemPostcssPlugin()]] as never,
+          },
+        },
+        build: { outDir: "dist", emptyOutDir: true, write: false },
+      }),
+      /BEM010.*PostCSS plugin/i,
+    );
+  });
+});

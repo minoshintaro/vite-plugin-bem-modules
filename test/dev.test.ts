@@ -134,8 +134,8 @@ test("実Vite dev serverでCSS変更をProjectとflat API・d.tsへ同期する"
     assert.match(await fs.readFile(dtsFile, "utf8"), /"rootCompact"/);
 
     await fs.writeFile(cssFile, cssSource("large"), "utf8");
-    // Keep one production-path check: chokidar event -> Vite hotUpdate ->
-    // Project compile -> d.ts projection.
+    // The adapter lets Vite/PostCSS own updates; it must not read or compile
+    // the changed source itself.
     const cssPlugin = server.config.plugins.find(
       (plugin) => plugin.name === "vite-plugin-bem-modules:css",
     );
@@ -143,25 +143,21 @@ test("実Vite dev serverでCSS変更をProjectとflat API・d.tsへ同期する"
     const hotUpdate = typeof cssPlugin.hotUpdate === "function"
       ? cssPlugin.hotUpdate
       : cssPlugin.hotUpdate.handler;
-    await hotUpdate.call(
+    const hotUpdateResult = await hotUpdate.call(
       { warn() {} } as never,
       {
         type: "update",
         file: cssFile,
         timestamp: Date.now(),
         modules: [],
-        read: async () => await fs.readFile(cssFile, "utf8"),
+        read: async () => { throw new Error("hotUpdate must not read source"); },
         server,
       } as never,
     );
-    const updatedDts = await fs.readFile(dtsFile, "utf8");
-    assert.match(updatedDts, /"rootLarge"/);
-    assert.doesNotMatch(updatedDts, /"rootCompact"/);
-    assert.match(await fs.readFile(dtsFile, "utf8"), /"rootLarge"/);
-    assert.doesNotMatch(await fs.readFile(dtsFile, "utf8"), /"rootCompact"/);
-    const updatedCss = await server.transformRequest(`/Card.module.css?direct=${Date.now()}`);
-    assert.match(updatedCss?.code ?? "", /p-card--large/);
-    assert.doesNotMatch(updatedCss?.code ?? "", /p-card--compact/);
+    assert.equal(hotUpdateResult, undefined);
+    const unchangedDts = await fs.readFile(dtsFile, "utf8");
+    assert.match(unchangedDts, /"rootCompact"/);
+    assert.doesNotMatch(unchangedDts, /"rootLarge"/);
   } finally {
     await closeServerAndRemoveRoot(server, root);
   }
@@ -281,24 +277,26 @@ test("Vite dev serverはHMRで同名Blockを許容し、生成d.tsを更新す�
     const hotUpdate = typeof cssPlugin.hotUpdate === "function"
       ? cssPlugin.hotUpdate
       : cssPlugin.hotUpdate.handler;
-    await hotUpdate.call(
+    const hotUpdateResult = await hotUpdate.call(
         { warn() {} } as never,
         {
           type: "update",
           file: bFile,
           timestamp: Date.now(),
           modules: [],
-          read: async () => await fs.readFile(bFile, "utf8"),
+          read: async () => { throw new Error("hotUpdate must not read source"); },
           server,
         } as never,
       );
+    assert.equal(hotUpdateResult, undefined);
+    await server.transformRequest(`/B.module.css?direct=${Date.now()}`);
     assert.match(await fs.readFile(bDtsFile, "utf8"), /readonly "root": string/);
   } finally {
     await closeServerAndRemoveRoot(server, root);
   }
 });
 
-test("並行HMRの失敗処理が後続の正常なschemaと生成型を削除しない", async () => {
+test("HMR updateはViteとPostCSSへ委譲し、失敗後の次の変換を妨げない", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-dev-hmr-recovery-"));
   const cssFile = path.join(root, "Card.module.css");
   let server: Awaited<ReturnType<typeof createServer>> | null = null;
@@ -315,18 +313,22 @@ test("並行HMRの失敗処理が後続の正常なschemaと生成型を削除�
     const cssPlugin = server.config.plugins.find((plugin) => plugin.name === "vite-plugin-bem-modules:css");
     assert.ok(cssPlugin?.hotUpdate);
     const hotUpdate = typeof cssPlugin.hotUpdate === "function" ? cssPlugin.hotUpdate : cssPlugin.hotUpdate.handler;
-    const context = { type: "update", file: cssFile, timestamp: Date.now(), modules: [], server };
-    const sources = ["/* @block p-card */ .root--invalid {}", cssSource("large")];
-    const results = await Promise.allSettled(sources.map((source) => hotUpdate.call(
+    const result = await hotUpdate.call(
       { warn() {} } as never,
-      { ...context, read: async () => source } as never,
-    )));
-    assert.equal(results[0]?.status, "rejected");
-    if (results[0]?.status === "rejected") assert.match(String(results[0].reason), /BEM003/);
-    assert.equal(results[1]?.status, "fulfilled");
+      {
+        type: "update",
+        file: cssFile,
+        timestamp: Date.now(),
+        modules: [],
+        read: async () => { throw new Error("hotUpdate must not read source"); },
+        server,
+      } as never,
+    );
+    assert.equal(result, undefined);
+
     const dts = await fs.readFile(`${cssFile}.d.ts`, "utf8");
-    assert.match(dts, /readonly "rootLarge": string/);
-    assert.doesNotMatch(dts, /rootCompact|rootInvalid/);
+    assert.match(dts, /readonly "rootCompact": string/);
+    assert.doesNotMatch(dts, /rootLarge|rootInvalid/);
 
     await fs.writeFile(path.join(root, "Other.module.css"), cssSource("compact"), "utf8");
     const activeServer = server;
@@ -432,26 +434,27 @@ test("Vite dev serverはroot外の明示includeをwatcherへ登録し、変更�
     const hotUpdate = typeof cssPlugin.hotUpdate === "function"
       ? cssPlugin.hotUpdate
       : cssPlugin.hotUpdate.handler;
-    await hotUpdate.call(
+    const hotUpdateResult = await hotUpdate.call(
       { warn() {} } as never,
       {
         type: "update",
         file: cssFile,
         timestamp: Date.now(),
         modules: [],
-        read: async () => await fs.readFile(cssFile, "utf8"),
+        read: async () => { throw new Error("hotUpdate must not read source"); },
         server,
       } as never,
     );
-    const updatedDts = await fs.readFile(dtsFile, "utf8");
-    assert.match(updatedDts, /"rootLarge"/);
-    assert.doesNotMatch(updatedDts, /"rootCompact"/);
+    assert.equal(hotUpdateResult, undefined);
+    const unchangedDts = await fs.readFile(dtsFile, "utf8");
+    assert.match(unchangedDts, /"rootCompact"/);
+    assert.doesNotMatch(unchangedDts, /"rootLarge"/);
   } finally {
     await closeServerAndRemoveRoot(server, parent);
   }
 });
 
-test("HMRは非class exportのprojection変更でscript importerをinvalidateする", async () => {
+test("HMRは非class exportのprojection変更でもVite標準の更新へ委譲する", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-dev-nonclass-hmr-"));
   const cssFile = path.join(root, "Card.module.css");
   const mainFile = path.join(root, "main.ts");
@@ -495,7 +498,7 @@ test("HMRは非class exportのprojection変更でscript importerをinvalidateす
         server,
       } as never,
     );
-    assert.deepEqual(result, [cssNode, mainNode]);
+    assert.equal(result, undefined);
   } finally {
     await closeServerAndRemoveRoot(server, root);
   }

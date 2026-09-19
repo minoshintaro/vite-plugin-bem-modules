@@ -223,4 +223,4 @@ styles.profileImageRounded; // "p-card__profileImage--rounded"
 
 隔離試作ではVite 8.2.1上で、Sass展開後のPostCSS AST変換、CSSとdefault importの一致、class-only隣接型、双方向keyframes台帳、明示同期、build、dev、実ブラウザHMRを確認した。HMR再診断では、動的specifierを使った検証entryのmodule再評価をdocument全体のreloadと誤認していたことを訂正し、literal specifierのdirect dependency acceptでdocumentとDOM identityを維持した更新を確認した。
 
-製品`src/`はまだv0.1実装であり、この契約の製品実装は始まっていない。Vite 6 / 7、依存package、virtual Module、Windowsの実watcher、生成先にsymlinkがある場合のv0.2 writer、公開APIの移行方法、性能は未確認である。
+製品`src/`へv0.2経路を実装済みである。Vite 6 / 7、依存package、virtual Module、Windowsの実watcher、生成先にsymlinkがある場合のv0.2 writer、公開APIの移行方法、性能は未確認である。

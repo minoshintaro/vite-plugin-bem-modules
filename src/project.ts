@@ -9,6 +9,7 @@ import {
   resolveDtsPath,
   writeGeneratedDts,
 } from "./dts.js";
+import { expandScssSource } from "./sass.js";
 import type {
   BemModuleSchema,
   ResolvedBemCompilerOptions,
@@ -54,6 +55,24 @@ async function readModuleSource(filePath: string): Promise<string | null> {
     if (isMissingFileError(error)) return null;
     throw error;
   }
+}
+
+async function compileProjectModule(
+  filePath: string,
+  source: string,
+  options: ResolvedBemCompilerOptions,
+): Promise<CompileBemModuleResult | null> {
+  // Keep source-level BEM diagnostics (notably @extend and implicit nesting)
+  // ahead of Sass expansion, then use the expanded stylesheet as the class-map
+  // source so mixin-generated selectors match Vite's runtime module.
+  if (filePath.endsWith(".module.scss")) {
+    compileBemModule({ filePath, source, options });
+  }
+  return compileBemModule({
+    filePath,
+    source: await expandScssSource(filePath, source),
+    options,
+  });
 }
 
 export function validateProjectSchemas(schemas: readonly BemModuleSchema[]): void {
@@ -134,11 +153,11 @@ export function createBemProjectIndex({
     source: string,
   ): Promise<CompileBemModuleResult | null> => {
     const canonical = canonicalFilePath(filePath);
-    const analyze = () => compileBemModule({ filePath: canonical, source, options: compilerOptions });
+    const analyze = () => compileProjectModule(canonical, source, compilerOptions);
     if (!isInScope(canonical)) return analyze();
     return enqueue(async () => {
       try {
-        const result = analyze();
+        const result = await analyze();
         await replaceSchema(canonical, result);
         return result;
       } catch (error) {
@@ -155,7 +174,7 @@ export function createBemProjectIndex({
     for (const filePath of files) {
       const source = await readModuleSource(filePath);
       if (source === null) continue;
-      const result = compileBemModule({ filePath, source, options: compilerOptions });
+      const result = await compileProjectModule(filePath, source, compilerOptions);
       if (result) next.set(canonicalFilePath(filePath), result.schema);
     }
     validateProjectSchemas(schemaValues(next));
