@@ -9,6 +9,7 @@ import type {
 } from "vite";
 import { createBemDiagnosticError } from "./diagnostics.js";
 import { createBemProjectIndex, type BemProjectIndex, type ProjectDtsMode } from "./project.js";
+import { createVitePreprocessor } from "./vite-preprocessor.js";
 import type {
   BemModulesOptions,
   ResolvedBemCompilerOptions,
@@ -149,6 +150,7 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
         compilerOptions,
         scope: resolvedOptions.project,
         dtsMode: projectDtsModeFor(resolvedOptions, command),
+        preprocessSource: createVitePreprocessor(config, postcssPlugin),
       });
       postcssPlugin?.configure({
         compilerOptions,

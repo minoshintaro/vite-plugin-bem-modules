@@ -93,3 +93,9 @@ test("Compiler・Project・CLIの推移的な静的依存はVite runtimeへ到�
     assert.deepEqual(reached, [], `${entryName} must not statically reach the vite package`);
   }
 });
+
+test("SCSS同期bridgeはSass packageを静的依存させず、CSS-only境界を保つ", () => {
+  const source = fs.readFileSync(path.join(sourceRoot, "vite-preprocessor.ts"), "utf8");
+  assert.doesNotMatch(source, /["'](?:sass|sass-embedded)["']/);
+  assert.match(source, /import\(VITE_SPECIFIER\)/);
+});

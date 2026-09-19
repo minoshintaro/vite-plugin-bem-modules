@@ -15,6 +15,10 @@
 
 今回の追補では、CLI / buildのSCSS同期をSass展開後のclass mapへ揃えた。最初にProject全体を単純に展開後だけ解析したところ、Sass `@extend` と暗黙BEM nestingの診断がBEM005から展開後のBEM003へ変わったため、source-level診断を先に行い、成功した場合だけ展開後schemaを採用する境界へ修正した。通常のHMRではこのProject解析を再利用せず、Viteと登録済みPostCSSへ委譲する。
 
+2026-09-19の追加回帰で、`src/sass.ts`の直接`compileStringAsync`経路はViteの`css.preprocessorOptions.scss.additionalData`を取りこぼし、`types: false`の通常build自体を壊すことを観測した。この観測で「SCSS同期だけなら独自compilerでもよい」という判断を撤回し、独自Sass loaderを削除して、build / CLIともVite 8の公開`preprocessCSS`と解決済みconfigを使う経路へ変更した。Viteの公開経路で足りない処理は独自互換実装へ戻さず、未対応境界として停止する方針を`REBUILD-SPEC.md`へ昇格した。
+
+同日の最終回帰では、`CI=true /Users/minos/.agents/bin/agent-test -- npm test` が対象145 / pass 145 / fail 0、`CI=true /Users/minos/.agents/bin/agent-test -- npm run check:typegen` がexit 0、`git diff --check`もexit 0だった。Vite公開`preprocessCSS`にclose APIがないため、テストrunnerにはNodeの`--test-force-exit`を追加し、CLIは出力完了後に明示終了する。ブラウザHMR runnerは今回も未観測である。
+
 `CI=true /Users/minos/.agents/bin/agent-test -- pnpm test` は対象139 / pass 139 / fail 0、`CI=true /Users/minos/.agents/bin/agent-test -- pnpm check:typegen` もexit 0だった。Vite 8.2.1のbuild/devと直接hotUpdate境界を検証済み。ブラウザE2E、Vite 6/7 matrix、Windows watcherは未検証。
 
 ## 今後のフェーズ

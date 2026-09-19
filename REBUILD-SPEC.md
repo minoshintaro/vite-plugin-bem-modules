@@ -127,6 +127,8 @@ styles.profileImageRounded; // "p-card__profileImage--rounded"
 - CSS asset の bundling、module graph、importer の invalidation。
 - TypeScript / JavaScript の import 解決と source transform。
 
+ホスト基盤が所有する処理をplugin側で再実装しない。Viteの公開委譲経路で必要な処理を実現できない場合は、private APIや独自互換実装へ逃げず、未対応の境界として停止し、必要な公開APIまたは設計変更を選択肢として報告する。
+
 したがって、設計上の基本経路は「Sass を Vite で処理した後、手書き登録した PostCSS plugin で CSS 構文を変換し、その結果を Vite の CSS Modules に渡す」経路である。Vite の CSS transformer や `css.modules` の互換範囲を独自に再実装しない。
 
 ### 3.10 隣接型宣言
@@ -205,7 +207,7 @@ styles.profileImageRounded; // "p-card__profileImage--rounded"
 4. ID、`@keyframes`、vendor prefix付きkeyframes、`animation` / `animation-name`の参照を、構文の境界を越えて誤変換しないこと。
 5. 同名keyframesが複数の管理対象Moduleにある場合、警告を出しつつbuildを成功させ、変更・改名・削除後に古い登録と警告を残さないこと。
 6. `vite.config`の`css.postcss.plugins`へ手書き登録した場合だけ動作し、未登録時に起動時エラーになること。利用者が並べた他のPostCSS pluginとの順序を保つこと。
-7. Sass、PostCSS、CSS Modules、asset bundlingをViteへ委譲し、同じPostCSS pluginを二重実行しないこと。
+7. Sass、PostCSS、CSS Modules、asset bundlingをViteへ委譲し、同じPostCSS pluginを二重実行しないこと。build / CLIのSCSS同期もViteの解決済み設定と公開`preprocessCSS`経路を使い、独自Sass compilerを持たないこと。
 8. dev serverでclassの追加・削除・改名、CSS宣言値、Sass partial、keyframes名・内容の変更を、document全体のreloadへ強制せずCSSとdefault importへ反映すること。
 9. source unlink、`@block`削除、手書きまたはsymlinkの`.d.ts`保護、内容不変時の書き込み抑止、未import Moduleの明示同期を確認すること。
 10. 初期対象のVite 8でbuild、dev、ブラウザHMRを確認すること。Vite 6 / 7はpeer rangeへ追加する場合に別途matrixを実行する。

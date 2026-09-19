@@ -16,7 +16,7 @@ if (testFiles.length === 0) {
 
 const result = spawnSync(
   process.execPath,
-  ["--import", "tsx", "--test", ...testFiles],
+  ["--import", "tsx", "--test", "--test-force-exit", ...testFiles],
   { stdio: "inherit" },
 );
 

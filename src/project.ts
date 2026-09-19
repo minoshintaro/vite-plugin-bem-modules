@@ -9,12 +9,14 @@ import {
   resolveDtsPath,
   writeGeneratedDts,
 } from "./dts.js";
-import { expandScssSource } from "./sass.js";
+import { createBemDiagnosticError } from "./diagnostics.js";
 import type {
   BemModuleSchema,
   ResolvedBemCompilerOptions,
 } from "./types.js";
 import { canonicalFilePath, normalizeFilePath } from "./utils.js";
+
+export type BemSourcePreprocessor = (filePath: string, source: string) => Promise<string>;
 
 export type ProjectDtsMode = "generate" | "remove" | "ignore";
 
@@ -28,6 +30,7 @@ export type BemProjectIndexOptions = {
   compilerOptions: ResolvedBemCompilerOptions;
   scope: BemProjectScope;
   dtsMode?: ProjectDtsMode;
+  preprocessSource?: BemSourcePreprocessor;
 };
 
 export type BemProjectIndex = {
@@ -61,16 +64,26 @@ async function compileProjectModule(
   filePath: string,
   source: string,
   options: ResolvedBemCompilerOptions,
+  preprocessSource: BemSourcePreprocessor | undefined,
 ): Promise<CompileBemModuleResult | null> {
   // Keep source-level BEM diagnostics (notably @extend and implicit nesting)
   // ahead of Sass expansion, then use the expanded stylesheet as the class-map
   // source so mixin-generated selectors match Vite's runtime module.
   if (filePath.endsWith(".module.scss")) {
     compileBemModule({ filePath, source, options });
+    if (!preprocessSource) {
+      throw createBemDiagnosticError(
+        "BEM004",
+        "SCSS synchronization requires Vite's resolved preprocessCSS path.",
+        { file: filePath },
+      );
+    }
   }
   return compileBemModule({
     filePath,
-    source: await expandScssSource(filePath, source),
+    source: filePath.endsWith(".module.scss")
+      ? await preprocessSource!(filePath, source)
+      : source,
     options,
   });
 }
@@ -91,6 +104,7 @@ export function createBemProjectIndex({
   compilerOptions,
   scope: projectScope,
   dtsMode: initialDtsMode = "ignore",
+  preprocessSource,
 }: BemProjectIndexOptions): BemProjectIndex {
   const canonicalRoot = canonicalFilePath(root);
   const schemas = new Map<string, BemModuleSchema>();
@@ -153,7 +167,7 @@ export function createBemProjectIndex({
     source: string,
   ): Promise<CompileBemModuleResult | null> => {
     const canonical = canonicalFilePath(filePath);
-    const analyze = () => compileProjectModule(canonical, source, compilerOptions);
+    const analyze = () => compileProjectModule(canonical, source, compilerOptions, preprocessSource);
     if (!isInScope(canonical)) return analyze();
     return enqueue(async () => {
       try {
@@ -174,7 +188,7 @@ export function createBemProjectIndex({
     for (const filePath of files) {
       const source = await readModuleSource(filePath);
       if (source === null) continue;
-      const result = await compileProjectModule(filePath, source, compilerOptions);
+      const result = await compileProjectModule(filePath, source, compilerOptions, preprocessSource);
       if (result) next.set(canonicalFilePath(filePath), result.schema);
     }
     validateProjectSchemas(schemaValues(next));

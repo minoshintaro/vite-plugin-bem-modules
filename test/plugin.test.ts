@@ -796,6 +796,75 @@ test("Sass mixin由来のclassはVite CSS Modulesのruntime exportへ委譲す�
   }
 });
 
+test("types:falseのbuildでもVite Sass additionalDataをProject同期より先に適用する", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-sass-additional-data-"));
+  try {
+    await fs.writeFile(
+      path.join(root, "Card.module.scss"),
+      "/* @block p-card */\n.root { color: $brand; }\n",
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(root, "main.ts"),
+      "import styles from './Card.module.scss'; export const className = styles.root;\n",
+      "utf8",
+    );
+
+    await assert.doesNotReject(() => build({
+      root,
+      configFile: false,
+      logLevel: "silent",
+      plugins: [testBemModules({ types: false })],
+      css: { preprocessorOptions: { scss: { additionalData: "$brand: red;" } } },
+      build: {
+        outDir: "dist",
+        emptyOutDir: true,
+        minify: false,
+        lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
+      },
+    }));
+
+    const cssFile = (await fs.readdir(path.join(root, "dist"))).find((file) => file.endsWith(".css"));
+    assert.ok(cssFile);
+    assert.match(await fs.readFile(path.join(root, "dist", cssFile), "utf8"), /color:\s*red/);
+    await assert.rejects(() => fs.access(path.join(root, "Card.module.scss.d.ts")), { code: "ENOENT" });
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("types:trueのbuildはVite Sass設定と同じclass mapをd.tsへ同期する", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-sass-additional-types-"));
+  try {
+    await fs.writeFile(
+      path.join(root, "Card.module.scss"),
+      "/* @block p-card */\n.root { color: $brand; }\n.badge { color: blue; }\n",
+      "utf8",
+    );
+    await fs.writeFile(path.join(root, "main.ts"), "import './Card.module.scss';\n", "utf8");
+
+    await build({
+      root,
+      configFile: false,
+      logLevel: "silent",
+      plugins: [testBemModules({ types: true })],
+      css: { preprocessorOptions: { scss: { additionalData: "$brand: red;" } } },
+      build: {
+        outDir: "dist",
+        emptyOutDir: true,
+        minify: false,
+        lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
+      },
+    });
+
+    const dts = await fs.readFile(path.join(root, "Card.module.scss.d.ts"), "utf8");
+    assert.match(dts, /readonly "root": string/);
+    assert.match(dts, /readonly "badge": string/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test("未知classが既知classと同じexport値なら由来をaliasと断定しない", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-output-alias-"));
   try {
