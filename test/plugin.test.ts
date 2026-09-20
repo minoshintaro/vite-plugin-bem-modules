@@ -1590,31 +1590,39 @@ test("Project scope内の重複Block名をbuildで許容する", async () => {
   }
 });
 
-test("project.startup: deferは起動時の全体走査を延期し、到達Moduleを変換する", async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-deferred-project-"));
-  try {
-    await fs.writeFile(path.join(root, "A.module.css"), "/* @block card */ .root {}", "utf8");
-    await fs.writeFile(path.join(root, "B.module.css"), "/* @block card */ .root {}", "utf8");
-    await fs.writeFile(
-      path.join(root, "main.ts"),
-      "import styles from './A.module.css'; export const className = styles.root;",
-      "utf8",
-    );
+test("project.startupは設定互換のみで、scan/deferとも全体走査を開始しない", async () => {
+  for (const startup of ["scan", "defer"] as const) {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), `bem-modules-startup-${startup}-`));
+    try {
+      await fs.writeFile(path.join(root, "A.module.css"), "/* @block card */ .root {}", "utf8");
+      await fs.writeFile(path.join(root, "B.module.css"), "/* @block card */ .root--missing {}", "utf8");
+      await fs.writeFile(
+        path.join(root, "main.ts"),
+        "import styles from './A.module.css'; export const className = styles.root;",
+        "utf8",
+      );
 
-    await assert.doesNotReject(() => build({
-      root,
-      configFile: false,
-      logLevel: "silent",
-      plugins: [testBemModules({ types: false, project: { startup: "defer" } })],
-      build: {
-        outDir: "dist",
-        emptyOutDir: true,
-        minify: false,
-        lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
-      },
-    }));
-  } finally {
-    await fs.rm(root, { recursive: true, force: true });
+      await build({
+        root,
+        configFile: false,
+        logLevel: "silent",
+        plugins: [testBemModules({ types: true, project: { startup } })],
+        build: {
+          outDir: "dist",
+          emptyOutDir: true,
+          minify: false,
+          lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
+        },
+      });
+
+      assert.match(await fs.readFile(path.join(root, "A.module.css.d.ts"), "utf8"), /readonly "root": string/);
+      await assert.rejects(() => fs.access(path.join(root, "B.module.css.d.ts")), { code: "ENOENT" });
+      const cssFile = (await fs.readdir(path.join(root, "dist"))).find((file) => file.endsWith(".css"));
+      assert.ok(cssFile);
+      assert.match(await fs.readFile(path.join(root, "dist", cssFile), "utf8"), /\.card\s*\{/);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   }
 });
 
@@ -2187,6 +2195,36 @@ test("path風virtual CSS ModuleもBEM schemaの所有外として委譲する", 
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
+});
+
+test("resolveIdは通常importのためにresolverを呼ばず、query検査の境界を保つ", async () => {
+  const plugin = getCssPlugin();
+  unwrapHook(plugin.configResolved!).call(
+    undefined as never,
+    {
+      root: process.cwd(),
+      css: {
+        transformer: "postcss",
+        modules: {},
+        postcss: { plugins: [createBemPostcssPlugin()] },
+      },
+    } as never,
+  );
+  const resolveId = unwrapHook(plugin.resolveId!);
+  let resolveCalls = 0;
+  const result = await resolveId.call(
+    {
+      resolve: async () => {
+        resolveCalls += 1;
+        return null;
+      },
+    } as never,
+    "./Card.module.css",
+    "/tmp/main.ts",
+  );
+
+  assert.equal(result, null);
+  assert.equal(resolveCalls, 0);
 });
 
 test("Lightning CSS transformerは明示的に拒否する", () => {

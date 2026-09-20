@@ -102,7 +102,7 @@ Configure separators and the spelling of names in CSS through the `naming` optio
 
 JavaScript keys remain camelCase, such as `styles.profileImage`, even with kebab-case input. See the [usage guide](https://github.com/minoshintaro/vite-plugin-bem-modules/blob/main/docs/guide.md) for supported separator combinations and configuration examples.
 
-Use `globalScope` to exclude classes such as `is-*` from conversion, and `project.include` / `project.exclude` to limit validation and type generation. Paths are relative to Vite's `root` or absolute; they are not globs. You can also write `:global(.utility)` directly in CSS.
+Use `globalScope` to exclude classes such as `is-*` from conversion, and `project.include` / `project.exclude` to limit validation and type generation. Paths are relative to Vite's `root` or absolute; they are not globs. A `globalScope` match keeps the class in the plugin's local class API and class-only declaration with its original name; an explicit `:global(.utility)` class is outside that API. You can write `:global(.utility)` directly in CSS.
 
 ## Type generation and CLI
 
@@ -121,7 +121,11 @@ To validate or synchronize without starting Vite, run the bundled CLI through pa
 }
 ```
 
-`npm run bem:check` validates without changing declarations; `npm run bem:sync` validates and synchronizes CSS Module declarations. SCSS synchronization is unavailable in the standalone CLI (`BEM004`) because Vite's public Sass preprocessing API does not expose a safe caller-owned worker lifecycle. If you customize the Vite plugin, share those options with the CLI through `bem-modules.config.mjs`. See the [shared configuration and CI examples](https://github.com/minoshintaro/vite-plugin-bem-modules/blob/main/docs/guide.md#validate-and-synchronize-with-the-cli).
+`npm run bem:check` validates without changing declarations; `npm run bem:sync` validates and synchronizes CSS Module declarations. The CLI creates one `write: false` programmatic Vite build with a virtual entry that imports the complete Project scope. Sass, `additionalData`, aliases, custom importers, PostCSS ordering, CSS Modules, and worker shutdown therefore remain Vite responsibilities. A Vite-compatible Sass implementation such as `sass-embedded` is required in CI when the scope contains `.module.scss` files.
+
+That build loads Vite config with `command: "build"` and Vite's default `mode: "production"`, and it runs the other plugin hooks in the selected config. Keep those hooks free of unsafe side effects for CLI use, or select a dedicated config with `--vite-config <path>`.
+
+`--config` continues to select `bem-modules.config.mjs` or `.js`. Vite config is discovered by Vite from `--root`; use `--vite-config <path>` only when an explicit Vite config path is needed. Share one options object from `bem-modules.config.mjs` between `bemModules(...)`, `createBemPostcssPlugin()`, and the CLI. The CLI requires the standard Vite companion in `plugins` and one direct `createBemPostcssPlugin()` registration in the resolved `css.postcss.plugins` array, then reuses that registration without adding either plugin. No Vite config, an external PostCSS config alone, a missing companion, or another indirect registration fails with `BEM010`. The CLI does not inspect, copy, reconstruct, or override external PostCSS configuration.
 
 ## Before adopting the plugin
 

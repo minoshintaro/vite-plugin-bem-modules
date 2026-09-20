@@ -29,7 +29,7 @@ export type BemProjectOptions = {
   include?: readonly string[];
   /** Root-relative or absolute files/directories excluded from the project scope. */
   exclude?: readonly string[];
-  /** Whether Vite startup scans the complete project scope or defers to reached modules. */
+  /** Accepted for configuration compatibility; Vite startup does not scan the complete project scope. */
   startup?: BemProjectStartup;
 };
 
@@ -95,6 +95,4 @@ export type BemModuleSchema = {
   exportMap: Readonly<Record<string, string>>;
   /** Classes written with an explicit :global selector in the module source. */
   explicitGlobalClassNames: readonly string[];
-  /** CSS Module exports declared by keyframes or ICSS `@value`, not classes. */
-  nonClassExportNames: readonly string[];
 };

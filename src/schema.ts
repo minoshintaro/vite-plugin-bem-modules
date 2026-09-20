@@ -199,45 +199,6 @@ function readBlockComment(root: Root, filePath: string): BlockComment {
   return { comment: comments[0]!, blockName };
 }
 
-function addNonClassExportName(names: Set<string>, value: string): void {
-  const name = value.trim();
-  if (!/^-?[A-Za-z_][A-Za-z0-9_-]*$/.test(name)) return;
-  names.add(name);
-  names.add(toCssModuleApiName(name));
-}
-
-function collectNonClassExportNames(root: Root): string[] {
-  const names = new Set<string>();
-  root.walkRules((rule) => {
-    if (rule.selector.trim() !== ":export") return;
-    rule.walkDecls((declaration) => addNonClassExportName(names, declaration.prop));
-  });
-  root.walkAtRules((atRule) => {
-    if (/^(?:-[A-Za-z0-9]+-)?keyframes$/i.test(atRule.name)) {
-      addNonClassExportName(names, atRule.params.trim().split(/\s+/, 1)[0] ?? "");
-      return;
-    }
-    if (atRule.name.toLowerCase() !== "value") return;
-
-    const declaration = atRule.params.split(/\s+from\s+/i, 1)[0] ?? "";
-    const namesPart = declaration.split(":", 1)[0] ?? declaration;
-    const trimmedNamesPart = namesPart.trim();
-    const importList = trimmedNamesPart.startsWith("(") && trimmedNamesPart.endsWith(")")
-      ? trimmedNamesPart.slice(1, -1)
-      : trimmedNamesPart;
-    for (const segment of importList.split(",")) {
-      const tokens = segment.trim().split(/\s+/);
-      if (tokens.length >= 3 && tokens[1]?.toLowerCase() === "as") {
-        addNonClassExportName(names, tokens[0] ?? "");
-        addNonClassExportName(names, tokens[2] ?? "");
-      } else {
-        addNonClassExportName(names, tokens[0] ?? "");
-      }
-    }
-  });
-  return [...names].sort();
-}
-
 function parseModuleSource(filePath: string, source: string): Root {
   return filePath.endsWith(".scss")
     ? postcssScss.parse(source, { from: filePath })
@@ -281,22 +242,6 @@ function escapeCssClassList(value: string): string {
     .filter(Boolean)
     .map(escapeCssIdentifier)
     .join(" ");
-}
-
-export function unescapeCssIdentifier(value: string): string {
-  if (!value.includes("\\")) return value;
-  let unescaped = value;
-  try {
-    selectorParser((selectors) => {
-      const selector = selectors.first;
-      const node = selector?.nodes[0];
-      if (selector?.nodes.length === 1 && node?.type === "class") unescaped = node.value;
-    }).processSync(`.${value}`);
-  } catch {
-    // Keep malformed external output intact so the normal export mismatch
-    // diagnostic remains the observable failure.
-  }
-  return unescaped;
 }
 
 function globalSelector(node: SelectorNode): SelectorNode {
@@ -579,7 +524,6 @@ function analyzeParsedModule(
   });
   const blockName = readBlockComment(root, filePath).blockName;
   assertSupportedBemSyntax(root, filePath);
-  const nonClassExportNames = collectNonClassExportNames(root);
   const collectedNames = collectClassNames(root);
   const localNames = [...collectedNames.localNames].sort();
   const globalNames: string[] = [];
@@ -648,7 +592,6 @@ function analyzeParsedModule(
     classMap,
     exportMap,
     explicitGlobalClassNames: [...collectedNames.explicitGlobalNames].sort(),
-    nonClassExportNames,
   };
 }
 

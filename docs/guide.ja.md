@@ -263,7 +263,7 @@ Viteがserve中に処理した、または`types: true`でbuildした`@block`付
 
 生成された`.d.ts`はCSS Moduleの隣に置かれます。このファイルはCSSから作られる派生ファイルですが、v0.1では利用者のプロジェクトでコミットする運用を推奨します。コミットしておけば、clone直後でもエディタと`tsc`が公開キーの辞書を読めます。`.d.ts`は手編集せず、元のCSSを変更したときに再生成してください。
 
-型宣言の同期では、Viteを起動しない同梱CLIを主経路にします。ローカルとCIで同じProject scopeを全走査でき、entryやimport状態に結果が左右されません。
+型宣言の同期では、Viteのdev serverを起動しない同梱CLIを主経路にします。CLIは同じProject scopeを収集し、全Moduleをside-effect importするvirtual entryを使って一回の`write: false` programmatic Vite buildを実行します。Sass、`additionalData`、alias、custom importer、PostCSSの順序、CSS Modules、worker lifecycleはViteへ委譲されます。CIで`.module.scss`を含むscopeを検査する場合は、Viteが利用できるSass実装（`sass-embedded`など）を依存に含めてください。
 
 ```sh
 bem-modules sync
@@ -346,9 +346,9 @@ bemModules({
 });
 ```
 
-`project.include` / `project.exclude`は、importされていないModuleも含めた`check` / `sync`の明示範囲を決めます。v0.2ではProject全体のBlock名・生成class名の一意性検査を行いません。
+`project.include` / `project.exclude`は、importされていないModuleも含めた`check` / `sync`の明示範囲を決めます。CLIはこの範囲をvirtual entryからimportし、個別にSass compilerや`preprocessCSS`を呼びません。v0.2ではProject全体のBlock名・生成class名の一意性検査を行いません。
 
-Vite起動時の全体処理を別の工程へ委ねる統合では、`project.startup: "defer"`を指定できます。この設定は`buildStart`での明示scope全体の`check` / `sync`を延期し、Viteから到達したCSS Moduleの変換とHMRは維持します。既定の`"scan"`では明示scopeを起動時処理に利用します。
+`project.startup`の`"scan"`と`"defer"`は設定互換のため受け付けますが、v0.2のVite pluginはどちらでも起動時のProject全体走査を開始しません。Viteから到達したCSS Moduleの変換と型同期は実処理経路で行い、未import Moduleを含む全体同期はCLIの明示操作へ委ねます。
 
 ```ts
 bemModules({
@@ -358,11 +358,11 @@ bemModules({
 });
 ```
 
-`bem-modules check`と`bem-modules sync`は明示的なCLI操作なので、`project.startup`に関係なくscope全体を処理します。通常のアプリケーションでは既定の`"scan"`を使用し、`"defer"`は別工程が全体検査を所有する統合でだけ使用してください。
+`bem-modules check`と`bem-modules sync`は明示的なCLI操作なので、`project.startup`に関係なくscope全体を処理します。
 
 ### CLIで検査・同期する
 
-同梱の`bem-modules` CLIは、rootの`bem-modules.config.mjs`（次に`.js`）から`naming`、`globalScope`、`modifierOutput`、`project`をVite pluginと共有します。`--config`で設定pathを指定でき、`--include` / `--exclude`はProject scopeを明示的に上書きします。
+同梱の`bem-modules` CLIは、rootの`bem-modules.config.mjs`（次に`.js`）を検証し、`project`を明示scopeの決定に使います。`naming`、`globalScope`、`modifierOutput`、`types`は、Vite configが同じ設定objectを`bemModules(...)`と`createBemPostcssPlugin(...)`へ渡すことで実処理へ反映されます。`--config`はこのshared `BemModulesOptions`を指定する意味を維持します。Vite configは`--root`からViteの標準探索で読み込み、明示指定が必要な場合だけ`--vite-config`を使います。`--include` / `--exclude`はProject scopeを明示的に上書きします。Vite configと`bem-modules.config`の設定差分をCLIが推測・統合することはありません。
 
 ```js
 // bem-modules.config.mjs
@@ -381,7 +381,7 @@ import bemConfig from "./bem-modules.config.mjs";
 const config = defineBemModulesConfig(bemConfig);
 export default defineConfig({
   plugins: [bemModules(config)],
-  css: { postcss: { plugins: [createBemPostcssPlugin()] } },
+  css: { postcss: { plugins: [createBemPostcssPlugin(config)] } },
 });
 ```
 
@@ -394,7 +394,9 @@ export default defineConfig({
 }
 ```
 
-`bem-modules check`は明示scopeの全Moduleを検査します。`bem-modules sync`は検査後に隣接`.d.ts`を生成・更新し、scope内のplugin-owned孤立生成物を削除します。CLIの動作modeは`types`ではなくコマンドで決まり、`check`は生成物を変更せず、`sync`は生成物を同期します。importされなくなっただけでは生成物を削除しません。
+`bem-modules check`は一回のVite buildで明示scopeの全Moduleを検査し、型宣言を変更しません。`bem-modules sync`は同じcapture済みschema集合を使い、build成功後にexpected pathを一括preflightしてから隣接`.d.ts`を生成・更新し、scope内のplugin-owned孤立生成物を削除します。buildまたはpreflightが失敗した場合、最初のfileを書き込む前なので既存型は変更されません。複数fileのOS I/Oまでを一つのtransactionとは扱わず、file単位のatomic renameの範囲を保証します。importされなくなっただけでは生成物を削除しません。
+
+CLIは標準Vite companionの`plugins`登録と、解決済み`css.postcss.plugins`に直接登録された一つの`createBemPostcssPlugin()`を必要とし、両方をcaptureへ切り替えて再利用します。BEM PostCSS pluginは一度だけ設定順に実行され、SCSSのsource-level診断もcompanion lifecycleを通ります。Vite config、companion、直接登録のいずれかがない場合、または外部PostCSS設定だけの場合は`BEM010`で停止します。CLIはcompanionやPostCSS factoryを追加せず、外部PostCSS設定も探索・読み込み・コピー・再構成・上書きしません。CLI buildは`command: "build"`と既定の`mode: "production"`で設定を読み、Vite config内の他plugin hookも実行します。安全に回避できない副作用はCLI側で隠さないため、必要なら`--vite-config`で副作用のない専用configを指定してください。`css.modules: false`の場合は検査と同期を無効にし、0件の通常結果と区別できる通知を標準エラーへ出します。
 
 ### BEMに変換しないclassを指定する
 
@@ -409,7 +411,7 @@ bemModules({
 });
 ```
 
-`exact`は完全一致、`prefix`は接頭辞一致です。対象のclassは元の名前で出力され、BEMのBaseやModifierとして扱われません。`root`は`globalScope`に一致してもBlockになります。
+`exact`は完全一致、`prefix`は接頭辞一致です。対象のclassは元の名前で出力され、BEMのBaseやModifierとして扱われません。ただし、`globalScope`は互換設定による分類なので、対象classはpluginのlocal class APIとclass-onlyの`.d.ts`へ元のkeyで残ります。明示した`:global(...)`のclassはこれと異なり、pluginのclass APIへ追加されません。`root`は`globalScope`に一致してもBlockになります。
 
 ## 既存のCSS Modulesと併用する
 

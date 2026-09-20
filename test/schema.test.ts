@@ -85,18 +85,6 @@ test("明示したkebabの -- 記法から Modifier をルールベースで解�
   assert.deepEqual(schema.bases.find((base) => base.apiName === "profileImage")?.modifiers.map((modifier) => modifier.apiName), ["rounded"]);
 });
 
-test("keyframes と ICSS value は class export ではないschema情報として保持する", () => {
-  const schema = analyze(`
-/* @block card */
-@value primary: #f00;
-@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-:export { theme-color: #0f0; }
-.root { color: primary; animation: fade-in 1s; }
-`);
-
-  assert.deepEqual(schema.nonClassExportNames, ["fade-in", "fadeIn", "primary", "theme-color", "themeColor"]);
-});
-
 test("単一ハイフンの名前は Modifier ではなく通常の Element として残る", () => {
   const schema = analyze("/* @block card */ .profile-image-rounded {}", KEBAB_NAMING);
 

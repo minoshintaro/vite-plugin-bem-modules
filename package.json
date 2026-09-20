@@ -35,6 +35,7 @@
     "typegen": "vite build --config examples/typegen/vite.config.mjs",
     "typecheck:example": "tsc -p examples/typegen/tsconfig.json --noEmit",
     "check:typegen": "npm run typegen && npm run typecheck:example && node scripts/check-generated-types.mjs",
+    "browser:hmr": "pnpm build && node scripts/browser-hmr-runner.mjs",
     "test": "tsc -p tsconfig.json && node scripts/run-tests.mjs",
     "prepack": "tsc -p tsconfig.json",
     "prepublishOnly": "npm test"

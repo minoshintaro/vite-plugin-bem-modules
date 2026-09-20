@@ -39,6 +39,8 @@
 2. `@block` がない Module は通常 Module として Vite に委譲する。BEM の class 変換、BEM 用の export 書き換え、class-only型生成、keyframes警告の観測を適用しない。
 3. `@block` の解析は CSS / SCSS の構文として行う。文字列の固定置換だけで selector、宣言値、animation 名を変換する方式は製品経路に採用しない。
 4. 一つの Module に複数の `@block` がある場合の診断は、既存 v0.1 の「一つの宣言」という境界を引き継ぐ。診断コードやメッセージは実装前に確定する。
+5. `BEM008`の所有検査は`raw` / `inline` / `url` queryを持つsource specifierだけを解決する。通常importの不要な解決は行わず、path形式の`virtual:` / `virtual/` specifierは既存の委譲境界を維持するために例外として扱う。
+6. path形式のvirtual specifierが実体path風のresolved IDへ解決された場合、そのresolved IDはsource provenanceに基づく恒久的な除外集合へ登録する。一回だけ消費するflagは使わず、同じIDを通常importが共有しても処理順に関係なく所有外とする。無効化中の登録は行わず、disabledからenabledへ戻る境界では通常の対象判定を再開する。
 
 ### 3.2 BEM class の名前
 
@@ -77,8 +79,10 @@ styles.profileImageRounded; // "p-card__profileImage--rounded"
 
 ### 3.4 `:global` class
 
+- `globalScope.exact` / `prefix`に一致するclassは、BEMのBase / Element / Modifierとして分類しないが、互換APIとしてpluginのclass対応表とclass-onlyの隣接`.d.ts`には元のkeyで残す。出力名は入力名のままglobal化する。
 - source に明示した `:global(.utility)`、および `:global` の scope 内にある class は、BEM class として分類・改名しない。
 - `:global` class は入力の global 名を保ち、BEM の Block / Element / Modifier uniqueness の対象から外す。
+- `globalScope`による分類と明示的な`:global`は同じ機能ではない。後者はpluginのclass APIへ追加しない。
 - `:global` class の runtime export の有無と key の形は、Vite の CSS Modules 設定に従う。plugin は global class を local BEM class として styles object へ追加しない。
 - `:global` の scope 外にある local class は、管理対象 Module である限り BEM class として扱う。`root` は `:global` によって意図的に除外されない限り Block になる。
 
@@ -140,7 +144,7 @@ styles.profileImageRounded; // "p-card__profileImage--rounded"
 - Viteが処理した管理対象Moduleはdev中に生成・更新する。sourceの削除または`@block`の削除では、plugin所有の型宣言を削除する。
 - importされなくなっただけでは通常の生成modeで削除しない。未import Moduleを含む全体同期と孤立生成物の内容を再計算する掃除は、明示的な同期コマンドの責務とする。`types: false`のbuildだけは、解析なしでscope内のplugin所有宣言を一括削除する。
 - SCSSの型生成は、Viteの実際のSass / PostCSS pipelineを通ったclass対応表を使う。source SCSSだけを独自解析してmixin由来classを推測しない。buildStartから別のSCSS前処理を呼び出して同じModuleを二重処理しない。
-- standalone CLIはSCSSの`check` / `sync`を`BEM004`で未対応として停止する。Viteの公開preprocess APIに呼び出し側のSass worker close APIがないため、CLIが独自lifecycleやprivate APIを持つことは契約に含めない。
+- standalone CLIは対象scopeの全Moduleをside-effect importするvirtual entryを作り、Viteのprogrammatic buildを`write: false`で一度だけ実行する。SCSSのclass対応表はそのSass → PostCSS → CSS Modules pipelineからcaptureし、CLIがSass compiler、Viteの公開`preprocessCSS`、private API、独自worker lifecycleを呼び出してはならない。capture中は`types`の値やVite plugin hookの実行順にかかわらず、PostCSS pluginから隣接型を生成・更新・削除しない。`check`は型I/Oを行わず、`sync`はbuildと全出力の所有確認に成功した後のreconcile処理だけが型I/Oを行う。CIでSCSSを検査する場合はViteが利用できるSass実装を依存へ用意する。
 
 ### 3.11 dev更新とHMR
 
@@ -175,7 +179,7 @@ styles.profileImageRounded; // "p-card__profileImage--rounded"
 ### 5.1 設定APIとv0.1からの移行
 
 - `naming.wordCase`、`naming.elementSeparator`、`naming.modifierSeparator`、`modifierOutput`、`types`、`project` は v0.1 の名前を維持する。これらは既存設定の移行負担が小さく、Vite への委譲とも衝突しない。
-- `globalScope.exact` / `prefix` も互換設定として維持する。ただし新規コードでは CSS 標準の `:global(...)` を推奨し、設定による追加 alias は class-only API に増やさない。`root` は従来どおり Block として扱う。
+- `globalScope.exact` / `prefix` も互換設定として維持する。一致したclassはBEM分類を受けず、元の名前のままglobal化するが、互換APIとしてclass対応表とclass-onlyの隣接`.d.ts`には残る。これは明示的な`:global(...)`のclassをplugin APIへ追加することとは異なる。新規コードではCSS標準の`:global(...)`を推奨し、別名を追加してAPIを拡張しない。`root`は従来どおりBlockとして扱う。
 - Project-wide の一意性検査は廃止する。`project.include` / `exclude` は未import Moduleを含む明示的な `check` / `sync` の範囲指定として残す。Vite companionはbuildStartで全体走査せず、`project.startup`は設定互換のため受け付けるが全体同期を起動しない。
 - `bem-modules check` と `bem-modules sync` は残す。`check` は class 構文と設定の検査、`sync` は同じ範囲の class-only 隣接型の同期を担当し、keyframes の Vite 警告台帳を CLI の永続状態にはしない。
 - package root の公開 factory は既定 export `bemModules`、`createBemPostcssPlugin`、`defineBemModulesConfig` とする。Compiler / Project / keyframes registry は内部 API とし、実 consumer が現れるまで公開しない。
@@ -194,10 +198,11 @@ styles.profileImageRounded; // "p-card__profileImage--rounded"
 
 - `css.modules.generateScopedName` は管理対象 Moduleのglobal class名と両立しないため、管理対象では plugin が生成した `:export` の値を正本にする。通常 Moduleへの Vite 標準設定は変更しない。
 - `localsConvention` と `exportGlobals` は Vite に委譲する。plugin が保証する型は、自身の class 対応表から得られる keyだけであり、追加 alias や global classの runtime exportは Vite設定の結果として扱う。
-- 登録検出は、`createBemPostcssPlugin()`が返す marker付き PostCSS pluginを、解決済み `css.postcss.plugins` の配列から探す。配列の wrapperを暗黙に展開したり、他の関数を実行して推測したりしない。見つからなければ config 解決時に `BEM010` で停止する。
-- `css.postcss.plugins` の順序をそのまま使用する。BEM pluginの自動挿入・二重実行・外部設定の再構成は行わない。
+- 登録検出は、`createBemPostcssPlugin()`が返す marker付き PostCSS pluginを、解決済み `css.postcss.plugins` の配列から探す。配列の wrapperを暗黙に展開したり、他の関数を実行して推測したりしない。runtimeでは見つからなければ config 解決時に`BEM010`で停止する。CLIはこれに加えて、解決済みVite plugin一覧に互換protocol markerを持つ`bemModules()` companionが直接登録されていることも必要とする。plugin名の文字列だけではcompanionと判定しない。Vite configなし、companionなし、非互換protocol、外部PostCSS設定だけ、または間接登録の場合は`BEM010`で停止する。外部PostCSS設定の探索・コピー・再構成・上書きや、同じpluginの二重実行は行わない。
+- runtimeとCLIは`css.postcss.plugins`の順序をそのまま使用する。runtime側・CLI側ともBEM pluginの自動挿入、配列の再構成、外部設定の再読み込みは行わない。
 - Viteの default PostCSS transformerだけを初期対象とし、`css.transformer: "lightningcss"` は `BEM011` で明示的に対象外とする。
 - build / devではViteの実CSS pipelineだけをSass、PostCSS、CSS Modules、型projectionへ使う。呼び出し側がworker lifecycleを閉じられないVite公開APIをbuildStartやlibrary runtimeから直接起動しない。
+- `bemModules()`と`createBemPostcssPlugin()`を同じVite設定へ登録する標準構成では、CSS Modulesが有効なときにBEM PostCSS pluginを一度だけ実行する。`css.modules: false`ではBEM変換、capture、Project検査、型同期を無効にし、PostCSS factory単体の`enabled`既定値`true`は変更しない。
 
 ## 6. 製品実装の受け入れ条件
 

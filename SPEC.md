@@ -1,6 +1,6 @@
-# 受け入れ契約
+# v0.1保守用の受け入れ契約
 
-この仕様は、CSS ModuleをBEMの意味モデルへ変換するv0.1の契約です。利用方法は[`README.md`](README.md)、実装の所有者は[`docs/architecture.md`](docs/architecture.md)、作業の状態は[`PLANS.md`](PLANS.md)が案内します。
+この仕様は、CSS ModuleをBEMの意味モデルへ変換する現行v0.1の保守用契約です。v0.2の現行契約は[`REBUILD-SPEC.md`](REBUILD-SPEC.md)が所有し、作り直しの設計・実装はこちらを参照します。利用方法は[`README.md`](README.md)、実装の所有者は[`docs/architecture.md`](docs/architecture.md)、作業の状態は[`PLANS.md`](PLANS.md)が案内します。
 
 ## 中心となるデータフロー
 

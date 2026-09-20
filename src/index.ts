@@ -1,5 +1,9 @@
 import type { ConfigEnv, Plugin, PluginOption, UserConfig } from "vite";
-import { createBemRuntime } from "./runtime.js";
+import {
+  BEM_VITE_COMPANION_MARKER,
+  BEM_VITE_COMPANION_PROTOCOL,
+  createBemRuntime,
+} from "./runtime.js";
 import type { BemModulesOptions } from "./types.js";
 import {
   isInNodeModules,
@@ -20,8 +24,9 @@ export { createBemPostcssPlugin } from "./postcss.js";
 export default function bemModules(options: BemModulesOptions = {}): PluginOption {
   const runtime = createBemRuntime(options);
 
-  const cssPlugin: Plugin = {
+  const cssPlugin: Plugin & { [BEM_VITE_COMPANION_MARKER]: number } = {
     name: "vite-plugin-bem-modules:css",
+    [BEM_VITE_COMPANION_MARKER]: BEM_VITE_COMPANION_PROTOCOL,
     enforce: "pre",
 
     // CSS rewriting stays pre; the observer is asserted again after resolution.
@@ -46,6 +51,9 @@ export default function bemModules(options: BemModulesOptions = {}): PluginOptio
     async resolveId(source, importer) {
       if (!runtime.isActive()) return null;
       if (!importer || isVirtualModule(source)) return null;
+      const nonModuleQuery = getNonModuleQuery(source);
+      const isPathVirtual = source.startsWith("virtual:") || source.startsWith("virtual/");
+      if (!nonModuleQuery && !isPathVirtual) return null;
       const resolved = await this.resolve(source, importer, { skipSelf: true });
       const resolvedId = typeof resolved === "string" ? resolved : resolved?.id;
       if (!resolvedId || !isModuleFile(resolvedId) || isInNodeModules(resolvedId) || isVirtualModule(resolvedId)) {
@@ -53,10 +61,9 @@ export default function bemModules(options: BemModulesOptions = {}): PluginOptio
       }
       const cleanId = stripQuery(resolvedId);
       if (source.startsWith("virtual:") || source.startsWith("virtual/")) {
-        runtime.ignoreVirtualCssModule(cleanId);
+        runtime.excludeVirtualCssModule(cleanId);
         return null;
       }
-      const nonModuleQuery = getNonModuleQuery(source);
       if (!nonModuleQuery) return null;
       if (await runtime.isOwnedCssModule(cleanId)) {
         throw unsupportedCssModuleQueryError(cleanId, nonModuleQuery);
@@ -76,10 +83,8 @@ export default function bemModules(options: BemModulesOptions = {}): PluginOptio
         }
         return null;
       }
-      const transformed = await runtime.transformCss(cleanId, code);
-      if (!transformed) return null;
-
-      return { code: transformed, map: null };
+      await runtime.transformCss(cleanId, code);
+      return null;
     },
 
     async buildStart() {

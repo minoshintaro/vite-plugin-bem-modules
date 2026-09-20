@@ -31,15 +31,19 @@ import {
 import { KeyframesRegistry } from "./keyframes-registry.js";
 import { isBemModuleSourceOwned, validateBemModuleSourceSyntaxIfOwned } from "./schema.js";
 
+export const BEM_CLI_CAPTURE_CONFIG = "__vitePluginBemModulesCliCapture";
+export const BEM_VITE_COMPANION_MARKER = "__vitePluginBemModulesCompanion";
+export const BEM_VITE_COMPANION_PROTOCOL = 1;
+
 type BemRuntime = {
   options: ResolvedBemModulesOptions;
   configResolved(config: ResolvedConfig): void;
   config(config: UserConfig, _env: ConfigEnv): UserConfig;
   configureServer(server: ViteDevServer): void;
   isActive(): boolean;
-  ignoreVirtualCssModule(filePath: string): void;
+  excludeVirtualCssModule(filePath: string): void;
   isOwnedCssModule(filePath: string): Promise<boolean>;
-  transformCss(filePath: string, source: string): Promise<string | null>;
+  transformCss(filePath: string, source: string): Promise<void>;
   handleBuildStart(): Promise<void>;
   handleHotUpdate(context: HotUpdateOptions): Promise<void>;
 };
@@ -71,16 +75,6 @@ function dtsModeFor(
   if (options.types === false) return "remove";
   if (options.types === true || command === "serve") return "generate";
   return "ignore";
-}
-
-function projectDtsModeFor(
-  options: ResolvedBemModulesOptions,
-  command: ConfigEnv["command"],
-): ProjectDtsMode {
-  // In dev, PostCSS writes declarations only for Modules that Vite actually
-  // processes. Full-scope generation remains the explicit `bem-modules sync`
-  // responsibility; false still performs cleanup.
-  return dtsModeFor(options, command);
 }
 
 async function readSource(filePath: string): Promise<string | null> {
@@ -120,6 +114,7 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
   let resolvedConfig: ResolvedConfig | null = null;
   let command: ConfigEnv["command"] = "serve";
   let postcssPlugin: BemPostcssPlugin | null = null;
+  let cliCapture = false;
 
   return {
     options: resolvedOptions,
@@ -149,9 +144,10 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
         root: config.root,
         compilerOptions,
         scope: resolvedOptions.project,
-        dtsMode: projectDtsModeFor(resolvedOptions, command),
+        dtsMode: dtsModeFor(resolvedOptions, command),
       });
       postcssPlugin?.configure({
+        enabled: config.css.modules !== false,
         compilerOptions,
         dtsMode: dtsModeFor(resolvedOptions, command) as BemPostcssDtsMode,
         keyframesRegistry: new KeyframesRegistry(),
@@ -160,7 +156,7 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
 
     config(config, env) {
       command = env.command;
-      project?.setDtsMode(projectDtsModeFor(resolvedOptions, command));
+      cliCapture = (config as UserConfig & Record<string, unknown>)[BEM_CLI_CAPTURE_CONFIG] === true;
       // The registered PostCSS factory owns the AST and appends the class-only
       // :export map. Vite remains the sole producer of the runtime CSS Module
       // object; do not rewrite or validate its JSON projection here.
@@ -173,7 +169,15 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
       if (includes.length > 0) server.watcher.add(includes);
       server.watcher.on("all", (event, file) => {
         if (event !== "unlink" || !isModuleFile(file)) return;
-        void postcssPlugin?.cleanup(file);
+        void Promise.resolve()
+          .then(() => postcssPlugin?.cleanup(file))
+          .catch((error: unknown) => {
+            const detail = error instanceof Error ? error.stack ?? error.message : String(error);
+            server.config.logger.error(
+              `[vite-plugin-bem-modules] failed to clean up generated artifacts for ${file}: ${detail}`,
+              { error: error instanceof Error ? error : null },
+            );
+          });
       });
     },
 
@@ -181,8 +185,8 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
       return resolvedConfig?.css.modules !== false;
     },
 
-    ignoreVirtualCssModule(filePath) {
-      postcssPlugin?.ignore(filePath);
+    excludeVirtualCssModule(filePath) {
+      postcssPlugin?.exclude(filePath);
     },
 
     async isOwnedCssModule(filePath) {
@@ -200,11 +204,10 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
       if (filePath.endsWith(".module.scss")) {
         validateBemModuleSourceSyntaxIfOwned(canonicalFilePath(filePath), source);
       }
-      return null;
     },
 
     async handleBuildStart() {
-      if (!resolvedConfig || !this.isActive() || !project) return;
+      if (!resolvedConfig || !this.isActive() || !project || cliCapture) return;
       if (command === "serve") return;
       // Vite's registered PostCSS plugin owns declarations for modules that
       // the real CSS pipeline processes. Build startup only performs the

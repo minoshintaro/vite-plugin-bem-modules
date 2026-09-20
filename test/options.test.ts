@@ -70,7 +70,7 @@ test("Projectのinclude/excludeはpath集合として正規化し、include未�
   }
 });
 
-test("project.startupは全体走査または到達Moduleへの延期を選ぶ", () => {
+test("project.startupは全体走査を開始しない互換値として受理する", () => {
   assert.equal(resolveOptions({ project: { startup: "defer" } }).project.startup, "defer");
   assert.throws(
     () => resolveOptions({ project: { startup: "invalid" as never } }),

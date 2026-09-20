@@ -1,6 +1,6 @@
 # アーキテクチャ（開発者向け）
 
-この文書は、実装を変更するときに「どの責任を、どの境界で確認するか」を示します。受け入れ契約は[`SPEC.md`](../SPEC.md)、利用方法は[`README.md`](../README.md)、作業の状態は[`PLANS.md`](../PLANS.md)が所有します。
+この文書は、実装を変更するときに「どの責任を、どの境界で確認するか」を示します。v0.2の受け入れ契約は[`REBUILD-SPEC.md`](../REBUILD-SPEC.md)、v0.1の保守契約は[`SPEC.md`](../SPEC.md)、利用方法は[`README.md`](../README.md)、作業の状態は[`PLANS.md`](../PLANS.md)が所有します。
 
 ## v0.2の責任分担
 
@@ -13,11 +13,11 @@ source
   │                                      │
   │                                      └─ class-only .d.ts / keyframes registry
   │
-  └─ Project / CLI CSS sync
-       compiler schema analysis → class map / .d.ts
+  └─ CLI explicit sync
+       collect scope → virtual entry → same Vite pipeline → deferred schema capture → .d.ts preflight / sync
 ```
 
-SCSSのruntime変換と型生成は、実際のVite Sass → PostCSS → CSS Modules pipelineを一度だけ通ったASTから行います。Project / CLIはViteのmodule graph外を明示的に走査するCSS同期を担います。Viteの公開`preprocessCSS`には呼び出し側がSass workerを閉じるAPIがないため、Project / CLIが別のSCSS前処理を起動する経路は製品実装に採用しません。
+SCSSのruntime変換と型生成は、実際のVite Sass → PostCSS → CSS Modules pipelineを一度だけ通ったASTから行います。CLIはscopeを収集しますが、各fileを直接compileせず、全対象をside-effect importするvirtual entryで一回のprogrammatic Vite buildへ渡します。schemaと型出力はmemoryへcaptureし、build成功後にだけpreflightとfile単位のatomic writeを行います。Viteの公開`preprocessCSS`を呼び出し側から起動する別経路や、Sass workerを独自管理する経路は製品実装に採用しません。
 
 ## Compilerとschema
 
@@ -42,9 +42,9 @@ pluginは明示的に`css.postcss.plugins`へ登録される必要がありま�
 
 [`src/project.ts`](../src/project.ts)は、rootと明示された`project.include` / `project.exclude`からfilesystem上の対象集合を作ります。`include`省略はroot全体、`include: []`は空集合です。Projectは対象集合を走査してCompilerを呼び、Module内のBEM診断とclass mapを検査します。v0.2では、別Module間のBlock名・生成class名の一意性は要求しません。グローバルなBEM名の衝突はCSSのcascadeとkeyframes警告の責務です。
 
-`check`は検査、`sync`は検査済みschemaと所有marker付きの隣接`.d.ts`の同期です。scope外のsourceや生成物はProjectが検査・削除しません。Project / CLIの明示同期はCSS Moduleを対象にし、SCSSはViteの所有するpreprocessing lifecycleがないため`BEM004`の未対応境界として停止します。Vite serve / buildでは、実際にPostCSSを通ったModuleの型をpluginが書きます。未import Moduleの全体同期はCLIのCSS経路だけが担い、buildStartでは行いません。
+`check`は検査、`sync`は検査済みschemaと所有marker付きの隣接`.d.ts`の同期です。scope外のsourceや生成物はProjectが検査・削除しません。ProjectIndexの低レベルcompile/check/syncはruntimeのunlink処理と既存consumer用に残りますが、CLIの主経路では使用しません。CLIはViteが処理した管理対象schemaだけをcaptureし、`check`では型へ触れず、`sync`ではbuild成功後に全expected pathをpreflightしてから生成・孤立生成物削除を確定します。capture中のPostCSS pluginは、companionの設定hookとの実行順や`types`の値にかかわらず、型宣言を生成・更新・削除しません。CLIで型I/Oを行う場所は、成功した`sync`のreconcile処理だけです。
 
-[`src/cli.ts`](../src/cli.ts)はshared `bem-modules.config`を読み、同じProject scopeとcompiler optionsを使います。CLIはViteのSass compilerを起動せず、SCSS同期を未対応境界として報告します。Sassの追加設定、alias、custom importerを再現するための設定コピーや独自loaderは持ちません。
+[`src/cli.ts`](../src/cli.ts)はshared `bem-modules.config`からscopeを読み、Vite configはVite自身の標準探索または`--vite-config`で読み込みます。CLIは互換protocol markerを持つ`bemModules(...)` companionと、`css.postcss.plugins`に直接登録されたBEM PostCSS pluginをそのまま内部captureへ切り替えます。Vite configのbundle境界を越えられないobject identityには依存せず、plugin名が同じだけのobjectや、非互換protocol、companionまたは直接登録がない場合（Vite configなし、外部PostCSS設定だけ、間接登録を含む）は`BEM010`で停止します。CLIはどちらのpluginも注入せず、PostCSS配列を再構成せず、外部PostCSS設定を探索・コピーせず、同じBEM pluginを二重実行しません。Vite config内の他plugin hookはCLI buildでも実行されるため、副作用が安全に回避できない場合はCLI側で隠しません。
 
 ## Vite companion
 
@@ -57,15 +57,21 @@ pluginは明示的に`css.postcss.plugins`へ登録される必要がありま�
 - source unlink時にProject、d.ts、keyframes registryを掃除する
 - 通常のSass、PostCSS、CSS Modules、HMRはViteと登録済みPostCSS pluginへ委譲する
 
-`transform`はno-opです。通常のmodule変更でProjectがimporterを読んだり、importerをinvalidateしたり、独自のHMR payloadを返したりしません。削除だけは所有するschemaと生成物を撤回するため、companionが処理します。virtual module、`node_modules`、`@block`のないCSS Moduleは標準Viteへ委譲します。BEM対象の`?raw` / `?inline` / `?url`は`BEM008`で拒否します。
+`transform`はno-opです。通常のmodule変更でProjectがimporterを読んだり、importerをinvalidateしたり、独自のHMR payloadを返したりしません。削除だけは所有するschemaと生成物を撤回するため、companionが処理します。`project.startup`の`scan` / `defer`は設定互換のため受理しますが、どちらも起動時のProject全体走査を開始しません。virtual module、`node_modules`、`@block`のないCSS Moduleは標準Viteへ委譲します。BEM対象の`?raw` / `?inline` / `?url`は`BEM008`で拒否します。
 
 ViteのSass package選択・worker lifecycle・alias解決はViteの通常pipelineだけに任せます。公開APIで呼び出し側のlifecycleを安全に完了できない処理は、plugin側で補助workerやprivate close APIを作らず未対応境界として扱います。
+
+`bemModules()`と`createBemPostcssPlugin()`を同じVite設定へ登録した標準構成では、companionがCSS Modules有効時のBEM PostCSS登録を検証し、PostCSS factory単体の`enabled`既定値`true`は維持します。`css.modules: false`ではcompanionとPostCSS factoryをともに無効化し、CLIもschema captureと型同期を行いません。
+
+### 手動ブラウザHMR runner
+
+製品srcを使った手動確認には`pnpm browser:hmr`を使います。これは先に`dist`をbuildし、tracked fixtureを変更しない一時rootでVite dev serverを起動してURLを表示します。表示されたページのclass、Sass partial、keyframesのボタンが一時fixtureを書き換え、CSS Module export、DOMのclass、隣接`.d.ts`を観測できます。runnerはブラウザを起動せず、自動assertも行わないため、URLを開いて確認した結果を受け入れ検証済みとは扱いません。ブラウザ自動化、Viteのversion matrix、watcher環境の確認は別途必要です。
 
 ## `.d.ts`の所有
 
 [`src/dts.ts`](../src/dts.ts)はschemaから宣言文字列を作る純粋なprojectionです。filesystemのread / writeと所有確認はProjectまたはPostCSS pluginが担当します。手書きの隣接`.d.ts`を上書きせず、所有markerがなければ`BEM006`で停止します。
 
-Viteではserve、または`types: true`で生成mode、`types: false`でremove mode、buildで`types`省略時はignore modeです。Vite build / serveの生成対象は実際にPostCSSを通ったModuleです。`types: false`のbuild開始時は解析なしでscope内のplugin所有宣言を掃除し、runtime pipelineが処理したModuleも同じmodeで削除します。CLIではCSSの`check`がignore、CSSの`sync`がgenerateです。SCSS CLI syncは`BEM004`で停止します。source削除、`@block`消失、明示scope内の孤立生成物、remove modeが削除の根拠になります。
+Viteではserve、または`types: true`で生成mode、`types: false`でremove mode、buildで`types`省略時はignore modeです。Vite build / serveの生成対象は実際にPostCSSを通ったModuleです。`types: false`のbuild開始時は解析なしでscope内のplugin所有宣言を掃除し、runtime pipelineが処理したModuleも同じmodeで削除します。CLIでは`check`がignore、`sync`がdeferred generateです。source削除、`@block`消失、明示scope内の孤立生成物、remove modeが削除の根拠になります。CLIの複数file同期はOS I/Oまで含むtransactionを保証せず、事前所有検査とfile単位atomic renameの範囲を保証します。
 
 ## 変更時の検証入口
 

@@ -64,18 +64,23 @@ function render() {
   }));
 }
 
-function accept(name, assign) {
-  if (!import.meta.hot) return;
-  import.meta.hot.accept(name, (module) => {
-    assign(module.default || module);
-    runtime.hmrUpdates.push(name);
-    render();
-  });
+function update(name, assign, module) {
+  assign(module.default || module);
+  runtime.hmrUpdates.push(name);
+  render();
 }
 
-accept("./Card.module.css", (value) => { card = value; });
-accept("./Card.module.scss", (value) => { scss = value; });
-accept("./Animation.module.css", (value) => { animation = value; });
+if (import.meta.hot) {
+  import.meta.hot.accept("./Card.module.css", (module) => {
+    update("./Card.module.css", (value) => { card = value; }, module);
+  });
+  import.meta.hot.accept("./Card.module.scss", (module) => {
+    update("./Card.module.scss", (value) => { scss = value; }, module);
+  });
+  import.meta.hot.accept("./Animation.module.css", (module) => {
+    update("./Animation.module.css", (value) => { animation = value; }, module);
+  });
+}
 render();
 `;
 

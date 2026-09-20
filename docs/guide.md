@@ -263,7 +263,7 @@ When Vite processes a CSS Module with `@block` during dev—or during a build wi
 
 The generated `.d.ts` is derived from the CSS source. For v0.1, committing it to the consumer repository is recommended so editors and `tsc` can resolve the class dictionary immediately after a clone. Do not edit generated declarations by hand; regenerate them whenever the source CSS changes.
 
-The bundled CLI is the primary way to synchronize CSS declarations without starting Vite. It scans the same Project scope locally and in CI, independent of entry points and import reachability. SCSS synchronization is unavailable in the standalone CLI (`BEM004`); use a Vite build or dev server so Sass, PostCSS, CSS Modules, and declaration projection share one host-owned pipeline.
+The bundled CLI is the primary way to synchronize CSS declarations without starting a Vite dev server. It collects the same Project scope and runs one `write: false` programmatic Vite build whose virtual entry side-effect-imports every collected Module. Sass, `additionalData`, aliases, custom importers, PostCSS ordering, CSS Modules, and worker lifecycle therefore remain in Vite's pipeline. CI that includes `.module.scss` needs a Sass implementation available to Vite, such as `sass-embedded`.
 
 ```sh
 bem-modules sync
@@ -346,9 +346,9 @@ bemModules({
 });
 ```
 
-`project.include` / `project.exclude` define the explicit scope for `check` and `sync`, including Modules that are not imported. Project-wide Block-name and generated-class uniqueness checks are not part of v0.2.
+`project.include` / `project.exclude` define the explicit scope for `check` and `sync`, including Modules that are not imported. The CLI imports that complete scope through its virtual entry; it does not call the compiler or Vite's experimental `preprocessCSS` separately. Project-wide Block-name and generated-class uniqueness checks are not part of v0.2.
 
-The Vite companion does not run a full-scope Project `check` / `sync` during `buildStart`. It lets the registered PostCSS plugin generate declarations for Modules that Vite actually processes. `project.startup` remains accepted for configuration compatibility, but full-scope CSS synchronization belongs to the explicit CLI operation; SCSS remains a `BEM004` boundary for that standalone command.
+The Vite companion does not run a full-scope Project `check` / `sync` during `buildStart`. It lets the registered PostCSS plugin generate declarations for Modules that Vite actually processes. Both `project.startup: "scan"` and `"defer"` remain accepted for configuration compatibility, but neither starts a full-scope scan; explicit CSS synchronization belongs to the CLI operation.
 
 ```ts
 bemModules({
@@ -358,11 +358,11 @@ bemModules({
 });
 ```
 
-`bem-modules check` and `bem-modules sync` are explicit CLI operations, so they always process the full scope regardless of `project.startup`. Use the default `"scan"` for ordinary applications. Reserve `"defer"` for integrations where another step owns full-Project validation.
+`bem-modules check` and `bem-modules sync` are explicit CLI operations, so they always process the full scope regardless of `project.startup`.
 
 ### Validate and synchronize with the CLI
 
-The bundled `bem-modules` CLI reads `naming`, `globalScope`, `modifierOutput`, and `project` from `bem-modules.config.mjs` at the root, falling back to `.js`. Pass `--config` to select another configuration path. `--include` and `--exclude` explicitly override the Project scope.
+The bundled `bem-modules` CLI validates `bem-modules.config.mjs` at the root, falling back to `.js`, and uses its `project` option to select the explicit scope. `naming`, `globalScope`, `modifierOutput`, and `types` affect processing when Vite config passes that same options object to `bemModules(...)` and `createBemPostcssPlugin(...)`. `--config` keeps this meaning and selects another shared BemModulesOptions file. Vite config is loaded by Vite's standard search from `--root`; pass `--vite-config` only when an explicit Vite config path is needed. `--include` and `--exclude` explicitly override the Project scope. The CLI does not infer or merge differences between the two config files.
 
 ```js
 // bem-modules.config.mjs
@@ -381,7 +381,7 @@ import bemConfig from "./bem-modules.config.mjs";
 const config = defineBemModulesConfig(bemConfig);
 export default defineConfig({
   plugins: [bemModules(config)],
-  css: { postcss: { plugins: [createBemPostcssPlugin()] } },
+  css: { postcss: { plugins: [createBemPostcssPlugin(config)] } },
 });
 ```
 
@@ -394,7 +394,9 @@ export default defineConfig({
 }
 ```
 
-`bem-modules check` validates every CSS Module in the explicit scope. After validation, `bem-modules sync` creates or updates adjacent `.d.ts` files and removes orphaned, plugin-owned declarations inside that scope. CLI behavior is determined by the command rather than by `types`: `check` never changes generated files, while `sync` reconciles them. A declaration is not removed merely because its Module is no longer imported. `.module.scss` files stop with `BEM004` because the standalone CLI cannot safely own Vite's Sass worker lifecycle.
+`bem-modules check` validates every CSS Module in the explicit scope through that one Vite build and never changes declarations. `bem-modules sync` uses the same captured schema set, preflights every expected declaration, then creates or updates adjacent `.d.ts` files and removes orphaned, plugin-owned declarations inside that scope. A failed build or ownership preflight leaves declarations unchanged; multiple OS writes are not presented as one transaction. A declaration is not removed merely because its Module is no longer imported—the virtual entry makes the scope explicit.
+
+The CLI requires the standard Vite companion in `plugins` and one direct `createBemPostcssPlugin()` marker in the resolved `css.postcss.plugins` array, then reuses both for capture. The BEM PostCSS transform therefore runs once and stays in the configured array order, while SCSS source-level diagnostics continue through the companion lifecycle. A missing Vite config, companion, direct registration, or an external PostCSS config without these Vite registrations fails with `BEM010`. The CLI does not inject either plugin and does not inspect, load, copy, reconstruct, or override external PostCSS settings. The build loads config with `command: "build"` and the default `mode: "production"`, and it runs the other Vite plugin hooks. Use `--vite-config` to select a side-effect-free config when necessary. With `css.modules: false`, validation and synchronization are disabled and the CLI writes a notice to standard error so this state is distinguishable from an ordinary zero-file result.
 
 ### Exclude global classes from BEM conversion
 
@@ -409,7 +411,7 @@ bemModules({
 });
 ```
 
-`exact` performs an exact match, while `prefix` matches by prefix. Matching classes keep their original names and are not interpreted as BEM Bases or Modifiers. `root` always represents the Block, even if it matches `globalScope`.
+`exact` performs an exact match, while `prefix` matches by prefix. Matching classes keep their original names and are not interpreted as BEM Bases or Modifiers. They still remain in the plugin's local class API and class-only declaration because `globalScope` is a compatibility classification, not the same as an explicit `:global(...)` selector. An explicit `:global(...)` class stays outside the plugin's class API. `root` always represents the Block, even if it matches `globalScope`.
 
 ## Use alongside existing CSS Modules
 

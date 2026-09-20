@@ -1,9 +1,7 @@
 import fs from "node:fs/promises";
-import path from "node:path";
 import { compileBemModule, type CompileBemModuleResult } from "./compiler.js";
 import { collectAdjacentDtsFiles, collectModuleFiles, isProjectFileInScope } from "./files.js";
 import {
-  GENERATED_DTS_HEADER,
   removeGeneratedDts,
   renderDts,
   resolveDtsPath,
@@ -36,7 +34,6 @@ export type BemProjectIndex = {
   isInScope(filePath: string): boolean;
   getSchema(filePath: string): BemModuleSchema | undefined;
   getSchemas(): BemModuleSchema[];
-  analyze(filePath: string, source: string): CompileBemModuleResult | null;
   compile(filePath: string, source: string): Promise<CompileBemModuleResult | null>;
   cleanupGeneratedDts(): Promise<void>;
   remove(filePath: string): Promise<void>;
@@ -71,13 +68,6 @@ function compileProjectModule(
     );
   }
   return compileBemModule({ filePath, source, options });
-}
-
-export function validateProjectSchemas(schemas: readonly BemModuleSchema[]): void {
-  // v0.2 intentionally permits global BEM names to collide across Modules.
-  // The browser's normal CSS cascade, rather than a project-wide index, owns
-  // the meaning of those collisions.
-  void schemas;
 }
 
 function schemaValues(schemas: Map<string, BemModuleSchema>): BemModuleSchema[] {
@@ -137,8 +127,6 @@ export function createBemProjectIndex({
   ): Promise<void> => {
     const canonical = canonicalFilePath(filePath);
     if (result) {
-      const others = schemaValues(schemas).filter((schema) => schema.filePath !== canonical);
-      validateProjectSchemas([...others, result.schema]);
       await syncDtsForSchema(result.schema);
       schemas.set(canonical, result.schema);
     } else {
@@ -175,7 +163,6 @@ export function createBemProjectIndex({
       const result = compileProjectModule(filePath, source, compilerOptions);
       if (result) next.set(canonicalFilePath(filePath), result.schema);
     }
-    validateProjectSchemas(schemaValues(next));
     return next;
   };
 
@@ -237,13 +224,6 @@ export function createBemProjectIndex({
     },
     getSchemas() {
       return schemaValues(schemas);
-    },
-    analyze(filePath, source) {
-      return compileBemModule({
-        filePath: canonicalFilePath(filePath),
-        source,
-        options: compilerOptions,
-      });
     },
     compile,
     cleanupGeneratedDts: () => enqueue(cleanupGeneratedDts),

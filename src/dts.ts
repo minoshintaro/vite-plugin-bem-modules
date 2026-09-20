@@ -56,6 +56,33 @@ function unownedDtsError(filePath: string): Error {
   );
 }
 
+/**
+ * Check every expected declaration before a CLI synchronization starts its
+ * first write. This is intentionally separate from the writer so a failed
+ * preflight cannot leave an earlier declaration half-reconciled.
+ */
+export async function assertGeneratedDtsWritable(filePath: string): Promise<void> {
+  try {
+    const stats = await fs.lstat(filePath);
+    if (!stats.isFile()) throw unownedDtsError(filePath);
+    const existing = await fs.readFile(filePath, "utf8");
+    if (!existing.startsWith(GENERATED_DTS_HEADER)) throw unownedDtsError(filePath);
+  } catch (error) {
+    if (!isMissingFileError(error)) throw error;
+  }
+}
+
+export async function isPluginGeneratedDts(filePath: string): Promise<boolean> {
+  try {
+    const stats = await fs.lstat(filePath);
+    if (!stats.isFile()) return false;
+    return (await fs.readFile(filePath, "utf8")).startsWith(GENERATED_DTS_HEADER);
+  } catch (error) {
+    if (isMissingFileError(error)) return false;
+    throw error;
+  }
+}
+
 export async function writeGeneratedDts(filePath: string, content: string): Promise<void> {
   let mode: number | undefined;
   try {

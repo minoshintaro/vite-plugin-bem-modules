@@ -87,11 +87,16 @@ function reachableViteImports(entry: string): string[] {
   return [...reached].sort();
 }
 
-test("Compiler・Project・CLIの推移的な静的依存はVite runtimeへ到達しない", () => {
-  for (const entryName of ["compiler.ts", "project.ts", "cli.ts"]) {
+test("Compiler・ProjectはVite runtimeへ到達せず、CLIはprogrammatic buildへ委譲する", () => {
+  for (const entryName of ["compiler.ts", "project.ts"]) {
     const reached = reachableViteImports(path.join(sourceRoot, entryName));
     assert.deepEqual(reached, [], `${entryName} must not statically reach the vite package`);
   }
+  assert.ok(
+    reachableViteImports(path.join(sourceRoot, "cli.ts"))
+      .some((entry) => entry.endsWith("src/cli.ts -> vite")),
+    "cli.ts must use Vite's programmatic build API",
+  );
 });
 
 test("runtimeとCLIはSass packageやVite preprocess APIを直接呼ばない", () => {
@@ -100,6 +105,12 @@ test("runtimeとCLIはSass packageやVite preprocess APIを直接呼ばない", 
     assert.doesNotMatch(source, /["'](?:sass|sass-embedded)["']/);
     assert.doesNotMatch(source, /preprocessCSS/);
   }
+});
+
+test("CLIはPostCSS設定をVite plugin配列へ追加せず、外部設定の探索も模倣しない", () => {
+  const source = fs.readFileSync(path.join(sourceRoot, "cli.ts"), "utf8");
+  assert.doesNotMatch(source, /EXTERNAL_POSTCSS_CONFIG_NAMES|hasExternalPostcssConfig/);
+  assert.doesNotMatch(source, /injectedPostcss|as unknown as Plugin|config\.plugins\s*=|const additions/);
 });
 
 test("test runnerはVite workerのlifecycle leakをforce-exitで隠さない", () => {

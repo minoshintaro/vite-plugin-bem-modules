@@ -25,12 +25,6 @@ export function isAdjacentDtsFile(id: string): boolean {
   return isAdjacentDtsPath(stripQuery(id));
 }
 
-export function isScriptModule(id: string): boolean {
-  const clean = stripQuery(id);
-  return [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts"]
-    .some((extension) => clean.endsWith(extension));
-}
-
 export function hasQueryFlag(id: string, flag: string): boolean {
   const query = id.split("?", 2)[1];
   if (!query) return false;
@@ -46,8 +40,4 @@ export function getNonModuleQuery(id: string): NonModuleQuery | null {
     if (hasQueryFlag(id, flag)) return flag;
   }
   return null;
-}
-
-export function hasNonModuleQuery(id: string): boolean {
-  return getNonModuleQuery(id) !== null;
 }
