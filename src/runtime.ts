@@ -45,11 +45,15 @@ type BemRuntime = {
   isOwnedCssModule(filePath: string): Promise<boolean>;
   transformCss(filePath: string, source: string): Promise<void>;
   handleBuildStart(): Promise<void>;
+  handleBuildEnd(error?: Error): void;
+  handleRenderError(error: Error): void;
+  handleCloseBundle(error?: Error): Promise<void>;
   handleHotUpdate(context: HotUpdateOptions): Promise<void>;
 };
 
-function findBemPostcssPlugin(value: unknown): BemPostcssPlugin | null {
-  if (!Array.isArray(value)) return null;
+function findBemPostcssPlugins(value: unknown): BemPostcssPlugin[] {
+  if (!Array.isArray(value)) return [];
+  const found: BemPostcssPlugin[] = [];
   for (const item of value) {
     if (typeof item !== "object" || item === null || Array.isArray(item)) continue;
     const candidate = item as Partial<BemPostcssPlugin>;
@@ -57,15 +61,37 @@ function findBemPostcssPlugin(value: unknown): BemPostcssPlugin | null {
       candidate[BEM_POSTCSS_PLUGIN_MARKER] === true
       && typeof candidate.configure === "function"
       && typeof candidate.cleanup === "function"
-    ) return candidate as BemPostcssPlugin;
+    ) found.push(candidate as BemPostcssPlugin);
   }
-  return null;
+  return found;
 }
 
-function resolvedPostcssPlugin(config: ResolvedConfig): BemPostcssPlugin | null {
+function resolvedPostcssPlugins(config: ResolvedConfig): BemPostcssPlugin[] {
   const postcss = config.css.postcss as unknown;
-  if (typeof postcss !== "object" || postcss === null) return null;
-  return findBemPostcssPlugin((postcss as { plugins?: unknown }).plugins);
+  if (typeof postcss !== "object" || postcss === null) return [];
+  return findBemPostcssPlugins((postcss as { plugins?: unknown }).plugins);
+}
+
+function assertSupportedLocalsConvention(
+  config: ResolvedConfig,
+  options: ResolvedBemModulesOptions,
+  command: ConfigEnv["command"],
+  cliCapture: boolean,
+): void {
+  if (config.css.modules === false) return;
+  if (dtsModeFor(options, command) !== "generate" && !cliCapture) return;
+  const convention = config.css.modules?.localsConvention;
+  if (convention === undefined || convention === "camelCase" || convention === "dashes") return;
+  throw createBemDiagnosticError(
+    "BEM004",
+    "css.modules.localsConvention is not supported when BEM declarations are generated.",
+    {
+      details: [
+        'use the Vite default, "camelCase", or "dashes".',
+        '"camelCaseOnly", "dashesOnly", and callback forms can remove source class keys declared by the generated .d.ts.',
+      ],
+    },
+  );
 }
 
 function dtsModeFor(
@@ -127,7 +153,20 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
           { details: ["use the default \"postcss\" transformer for CSS Modules integration."] },
         );
       }
-      postcssPlugin = resolvedPostcssPlugin(config);
+      const registeredPostcssPlugins = resolvedPostcssPlugins(config);
+      if (registeredPostcssPlugins.length > 1) {
+        throw createBemDiagnosticError(
+          "BEM010",
+          "BEM PostCSS plugin must be registered exactly once in css.postcss.plugins.",
+          {
+            details: [
+              `found ${registeredPostcssPlugins.length} direct registrations.`,
+              "keep one createBemPostcssPlugin() entry in the resolved PostCSS plugin array.",
+            ],
+          },
+        );
+      }
+      postcssPlugin = registeredPostcssPlugins[0] ?? null;
       if (config.css.modules !== false && !postcssPlugin) {
         throw createBemDiagnosticError(
           "BEM010",
@@ -139,6 +178,7 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
           },
         );
       }
+      assertSupportedLocalsConvention(config, resolvedOptions, command, cliCapture);
       resolvedConfig = config;
       project = createBemProjectIndex({
         root: config.root,
@@ -150,6 +190,7 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
         enabled: config.css.modules !== false,
         compilerOptions,
         dtsMode: dtsModeFor(resolvedOptions, command) as BemPostcssDtsMode,
+        deferDtsWrites: command === "build" && resolvedOptions.types === true && !cliCapture,
         keyframesRegistry: new KeyframesRegistry(),
       });
     },
@@ -207,6 +248,7 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
     },
 
     async handleBuildStart() {
+      postcssPlugin?.discardDeferredDts();
       if (!resolvedConfig || !this.isActive() || !project || cliCapture) return;
       if (command === "serve") return;
       // Vite's registered PostCSS plugin owns declarations for modules that
@@ -214,6 +256,25 @@ export function createBemRuntime(options: BemModulesOptions = {}): BemRuntime {
       // parse-free cleanup required by types:false; full-scope sync remains
       // the explicit CLI responsibility.
       if (resolvedOptions.types === false) await project.cleanupGeneratedDts();
+    },
+
+    handleBuildEnd(error) {
+      if (error) postcssPlugin?.discardDeferredDts();
+    },
+
+    handleRenderError() {
+      postcssPlugin?.discardDeferredDts();
+    },
+
+    async handleCloseBundle(error) {
+      if (error) {
+        postcssPlugin?.discardDeferredDts();
+        return;
+      }
+      // Vite's programmatic build closes Rolldown without forwarding errors
+      // from later writeBundle hooks. This can only honor failures already
+      // reported by buildEnd or renderError.
+      await postcssPlugin?.flushDeferredDts();
     },
 
     async handleHotUpdate(context) {

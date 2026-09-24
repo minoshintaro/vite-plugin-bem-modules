@@ -2,7 +2,13 @@ import path from "node:path";
 import type { Result, Root } from "postcss";
 import { collectKeyframeNames, analyzeAndLowerParsedModuleIfOwned } from "./schema.js";
 import { KeyframesRegistry } from "./keyframes-registry.js";
-import { removeGeneratedDts, renderDts, resolveDtsPath, writeGeneratedDts } from "./dts.js";
+import {
+  assertGeneratedDtsWritable,
+  removeGeneratedDts,
+  renderDts,
+  resolveDtsPath,
+  writeGeneratedDts,
+} from "./dts.js";
 import { canonicalFilePath } from "./utils.js";
 import { resolveOptions } from "./options.js";
 import type {
@@ -22,6 +28,7 @@ export type BemPostcssConfigure = {
   enabled: boolean;
   compilerOptions: ResolvedBemCompilerOptions;
   dtsMode: BemPostcssDtsMode;
+  deferDtsWrites: boolean;
   keyframesRegistry: KeyframesRegistry;
 };
 
@@ -36,6 +43,8 @@ export type BemPostcssPlugin = {
   Once(root: Root, helpers: { result: Result }): Promise<void>;
   configure(config: BemPostcssConfigure): void;
   cleanup(filePath: string): Promise<void>;
+  flushDeferredDts(): Promise<void>;
+  discardDeferredDts(): void;
   exclude(filePath: string): void;
 };
 
@@ -87,10 +96,12 @@ export function createBemPostcssPlugin(options: BemModulesOptions = {}): BemPost
   };
   let dtsMode: BemPostcssDtsMode = options.types === true ? "generate"
     : options.types === false ? "remove" : "ignore";
+  let deferDtsWrites = false;
   let enabled = true;
   let keyframesRegistry = new KeyframesRegistry();
   const reportedConflicts = new Set<string>();
   const excludedFiles = new Set<string>();
+  const deferredDts = new Map<string, string | null>();
   let capture: BemPostcssCapture | null = null;
 
   // CLI capture is a read-only phase for declarations. Keep this decision
@@ -98,13 +109,29 @@ export function createBemPostcssPlugin(options: BemModulesOptions = {}): BemPost
   // regular dev/build dtsMode before or after the capture marker runs.
   const activeDtsMode = (): BemPostcssDtsMode => capture === null ? dtsMode : "ignore";
 
+  const writeDts = async (filePath: string, contents: string): Promise<void> => {
+    if (deferDtsWrites && activeDtsMode() === "generate") {
+      deferredDts.set(filePath, contents);
+      return;
+    }
+    await writeGeneratedDts(filePath, contents);
+  };
+
+  const removeDts = async (filePath: string): Promise<void> => {
+    if (deferDtsWrites && activeDtsMode() === "generate") {
+      deferredDts.set(filePath, null);
+      return;
+    }
+    await removeGeneratedDts(filePath);
+  };
+
   const cleanup = async (filePath: string): Promise<void> => {
     if (!enabled) return;
     const canonical = canonicalFilePath(path.resolve(filePath));
     keyframesRegistry.remove(canonical);
     clearResolvedWarnings(keyframesRegistry, reportedConflicts);
     if (activeDtsMode() !== "ignore" && isCssModulePath(canonical)) {
-      await removeGeneratedDts(resolveDtsPath(canonical));
+      await removeDts(resolveDtsPath(canonical));
     }
   };
 
@@ -116,10 +143,30 @@ export function createBemPostcssPlugin(options: BemModulesOptions = {}): BemPost
       enabled = config.enabled;
       compilerOptions = config.compilerOptions;
       dtsMode = config.dtsMode;
+      deferDtsWrites = config.deferDtsWrites && config.dtsMode === "generate";
       keyframesRegistry = config.keyframesRegistry;
+      deferredDts.clear();
     },
 
     cleanup,
+
+    async flushDeferredDts() {
+      const writes = [...deferredDts];
+      deferredDts.clear();
+      const ownershipChecks: Promise<void>[] = [];
+      for (const [filePath, contents] of writes) {
+        if (contents !== null) ownershipChecks.push(assertGeneratedDtsWritable(filePath));
+      }
+      await Promise.all(ownershipChecks);
+      for (const [filePath, contents] of writes) {
+        if (contents === null) await removeGeneratedDts(filePath);
+        else await writeGeneratedDts(filePath, contents);
+      }
+    },
+
+    discardDeferredDts() {
+      deferredDts.clear();
+    },
 
     [BEM_POSTCSS_CAPTURE_MARKER](nextCapture, captureEnabled) {
       capture = nextCapture;
@@ -162,7 +209,7 @@ export function createBemPostcssPlugin(options: BemModulesOptions = {}): BemPost
       const currentDtsMode = activeDtsMode();
       if (currentDtsMode === "ignore") return;
       if (currentDtsMode === "generate") {
-        await writeGeneratedDts(resolveDtsPath(sourcePath), renderDts(schema));
+        await writeDts(resolveDtsPath(sourcePath), renderDts(schema));
       } else {
         await removeGeneratedDts(resolveDtsPath(sourcePath));
       }

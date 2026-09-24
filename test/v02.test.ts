@@ -48,6 +48,22 @@ test("PostCSS factoryは管理対象のclass、ID、keyframes、animationを構�
   });
 });
 
+test("追加した :export 宣言は元の CSS ファイルを source に持つ", async () => {
+  await withTempRoot(async (root) => {
+    const sourcePath = path.join(root, "Card.module.css");
+    const result = await postcss([createBemPostcssPlugin({ types: false })]).process(
+      "/* @block p-card */\n.root { background: url(./icon.svg); }\n",
+      { from: sourcePath },
+    );
+    const declarations: { prop: string; file: string | undefined }[] = [];
+    result.root.walkDecls((declaration) => {
+      declarations.push({ prop: declaration.prop, file: declaration.source?.input.file });
+    });
+    assert.ok(declarations.some(({ prop }) => prop === "root"));
+    assert.deepEqual(declarations.map(({ file }) => file), declarations.map(() => sourcePath));
+  });
+});
+
 test("無効化したPostCSS factoryはAST・台帳・excludedFiles・型へ副作用を与えない", async () => {
   await withTempRoot(async (root) => {
     const sourcePath = path.join(root, "Card.module.css");

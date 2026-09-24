@@ -71,8 +71,9 @@ styles.profileImage; // "p-card__profileImage"
 styles.profileImageRounded; // "p-card__profileImage--rounded"
 ```
 
-- runtime の styles object と、TypeScript で参照できる class key は同じ変換結果を指す。
+- runtime の styles object に存在する key だけを、TypeScript で参照できる class key として宣言する。型生成時にこの対応を保てない Vite 設定は config 解決時に拒否する。
 - source の Modifier key は、現行 v0.1 と同じく CSS Modules の通常の key 変換規則に従って flat API へ投影する。例では `root--compact` を `rootCompact` として参照できる。
+- 型を生成する間、`css.modules.localsConvention` は省略時のVite既定値、`"camelCase"`、`"dashes"`をサポートする。`"camelCaseOnly"`、`"dashesOnly"`、関数形式は元のclass keyをruntime objectから除く場合があるため、`BEM004`で拒否する。`types: false`で型を生成しない場合、この型整合検査は行わない。
 - class export の値は、`modifierOutput` の設定に応じて Modifier だけ、または Base と Modifier の組み合わせになる。生成 class 自体は常にグローバル名である。
 - plugin は TypeScript / JavaScript source を書き換えない。default styles object の生成と import 解決は Vite の CSS Modules に任せる。
 - named CSS export、class 以外の値の型、framework 固有の virtual CSS Module の型は、この class API の保証に含めない。
@@ -115,7 +116,7 @@ styles.profileImageRounded; // "p-card__profileImage--rounded"
 
 ### 3.8 PostCSS の手書き登録
 
-- 利用者が `vite.config` の `css.postcss.plugins` に BEM 用 PostCSS plugin を明示的に登録する。
+- 利用者が `vite.config` の `css.postcss.plugins` に BEM 用 PostCSS plugin を一つだけ明示的に登録する。同じインスタンスの重複を含め、複数登録は `BEM010` で拒否する。
 - 利用者が同時に使う他の PostCSS plugin も同じ配列へ明示する。BEM plugin は利用者の指定した配列順で実行される。
 - Vite plugin は BEM 用 PostCSS plugin を自動挿入しない。自動挿入による二重実行や、利用者の PostCSS 構成を暗黙に置き換える動作は契約に含めない。
 - Vite の設定解決時に BEM 用 plugin の登録を確認し、登録がない場合は起動時に失敗させる。警告だけで処理を続けない。
@@ -137,7 +138,7 @@ styles.profileImageRounded; // "p-card__profileImage--rounded"
 
 ### 3.10 隣接型宣言
 
-- 管理対象Moduleの隣接`*.module.css.d.ts`または`*.module.scss.d.ts`を、runtime exportと同じclass対応表から生成する。
+- 管理対象Moduleの隣接`*.module.css.d.ts`または`*.module.scss.d.ts`を、runtime exportと同じclass対応表から生成する。buildの`types: true`では PostCSS 処理中の書き込みを保留し、Vite の公開 `closeBundle` hook で反映する。成功時は`build.write: false`でも型宣言を生成する。`buildEnd`または`renderError`へ届く失敗では保留内容を破棄する。CSS Modulesの変換失敗では既存宣言が以前の内容のままになることを検証済み。Viteのprogrammatic buildは後続`writeBundle` hookの失敗を`closeBundle`へ渡さないため、その失敗時はbuild自体がrejectしても型宣言が更新済みの場合がある。この境界より後の失敗に対する型宣言保持は保証しない。反映前に全書き込み先の所有権を確認し、`BEM006`ではどの宣言も変更しない。確認後の複数file更新は、OSのI/O障害まで含むtransactionではない。devではViteのPostCSS処理が成功した時点で更新する。
 - 型宣言に含めるのはclass keyだけとする。ID、keyframes、`@value`、任意の`:export` key、`:global` classは含めない。
 - 生成物にはplugin所有markerを付ける。markerのない手書きfileとsymlinkは上書き・削除しない。
 - 生成内容が変わらない場合はfileを書き換えない。
@@ -197,12 +198,12 @@ styles.profileImageRounded; // "p-card__profileImage--rounded"
 ### 5.3 Vite設定との共存
 
 - `css.modules.generateScopedName` は管理対象 Moduleのglobal class名と両立しないため、管理対象では plugin が生成した `:export` の値を正本にする。通常 Moduleへの Vite 標準設定は変更しない。
-- `localsConvention` と `exportGlobals` は Vite に委譲する。plugin が保証する型は、自身の class 対応表から得られる keyだけであり、追加 alias や global classの runtime exportは Vite設定の結果として扱う。
-- 登録検出は、`createBemPostcssPlugin()`が返す marker付き PostCSS pluginを、解決済み `css.postcss.plugins` の配列から探す。配列の wrapperを暗黙に展開したり、他の関数を実行して推測したりしない。runtimeでは見つからなければ config 解決時に`BEM010`で停止する。CLIはこれに加えて、解決済みVite plugin一覧に互換protocol markerを持つ`bemModules()` companionが直接登録されていることも必要とする。plugin名の文字列だけではcompanionと判定しない。Vite configなし、companionなし、非互換protocol、外部PostCSS設定だけ、または間接登録の場合は`BEM010`で停止する。外部PostCSS設定の探索・コピー・再構成・上書きや、同じpluginの二重実行は行わない。
+- `localsConvention` と `exportGlobals` は Vite に委譲する。型生成中に対応する `localsConvention` は省略時の既定値、`"camelCase"`、`"dashes"`に限る。元のsource keyを除く設定や関数形式は型の保証と両立しないため、`BEM004`で拒否する。追加aliasやglobal classのruntime exportは、引き続きVite設定の結果として扱う。
+- 登録検出は、`createBemPostcssPlugin()`が返す marker付き PostCSS pluginを、解決済み `css.postcss.plugins` の配列から探す。配列の wrapperを暗黙に展開したり、他の関数を実行して推測したりしない。runtimeでは登録がちょうど一つでなければconfig解決時に`BEM010`で停止する。CLIはこれに加えて、解決済みVite plugin一覧に互換protocol markerを持つ`bemModules()` companionが直接登録されていることも必要とする。plugin名の文字列だけではcompanionと判定しない。Vite configなし、companionなし、非互換protocol、外部PostCSS設定だけ、間接登録、または複数登録の場合は`BEM010`で停止する。外部PostCSS設定の探索・コピー・再構成・上書きは行わない。
 - runtimeとCLIは`css.postcss.plugins`の順序をそのまま使用する。runtime側・CLI側ともBEM pluginの自動挿入、配列の再構成、外部設定の再読み込みは行わない。
 - Viteの default PostCSS transformerだけを初期対象とし、`css.transformer: "lightningcss"` は `BEM011` で明示的に対象外とする。
 - build / devではViteの実CSS pipelineだけをSass、PostCSS、CSS Modules、型projectionへ使う。呼び出し側がworker lifecycleを閉じられないVite公開APIをbuildStartやlibrary runtimeから直接起動しない。
-- `bemModules()`と`createBemPostcssPlugin()`を同じVite設定へ登録する標準構成では、CSS Modulesが有効なときにBEM PostCSS pluginを一度だけ実行する。`css.modules: false`ではBEM変換、capture、Project検査、型同期を無効にし、PostCSS factory単体の`enabled`既定値`true`は変更しない。
+- `bemModules()`と`createBemPostcssPlugin()`を同じVite設定へ登録する標準構成では、CSS Modulesが有効なときにBEM PostCSS pluginを一度だけ実行する。config解決時に複数登録を`BEM010`で拒否する。`types: true`のbuildではPostCSS中に型を保留し、Viteの公開`closeBundle`で反映するため、`build.write: false`でも型を同期する。`buildEnd`または`renderError`へ届く失敗では保留型を破棄するが、後続`writeBundle` hookの失敗は`closeBundle`へ伝わらず、型反映後にbuildが失敗する場合がある。この後段failure時の保持は保証しない。`css.modules: false`ではBEM変換、capture、Project検査、型同期を無効にし、PostCSS factory単体の`enabled`既定値`true`は変更しない。
 
 ## 6. 製品実装の受け入れ条件
 

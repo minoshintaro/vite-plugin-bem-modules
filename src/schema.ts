@@ -344,12 +344,14 @@ function lowerSelectors(root: Root, schema: BemModuleSchema): void {
 }
 
 function appendExportMap(root: Root, schema: BemModuleSchema): void {
-  const exportRule = postcss.rule({ selector: ":export" });
+  const exportRule = postcss.rule({ selector: ":export", source: root.source });
   for (const key of Object.keys(schema.exportMap).sort()) {
-    exportRule.append(postcss.decl({
+    const declaration = postcss.decl({
       prop: escapeCssIdentifier(key),
       value: escapeCssClassList(schema.exportMap[key]!),
-    }));
+    });
+    declaration.source = root.source;
+    exportRule.append(declaration);
   }
   root.append(exportRule);
 }

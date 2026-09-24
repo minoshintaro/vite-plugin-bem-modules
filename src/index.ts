@@ -91,6 +91,18 @@ export default function bemModules(options: BemModulesOptions = {}): PluginOptio
       await runtime.handleBuildStart();
     },
 
+    buildEnd(error) {
+      runtime.handleBuildEnd(error);
+    },
+
+    renderError(error) {
+      runtime.handleRenderError(error);
+    },
+
+    async closeBundle(error) {
+      await runtime.handleCloseBundle(error);
+    },
+
     async hotUpdate(context) {
       return runtime.handleHotUpdate(context);
     },

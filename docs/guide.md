@@ -62,7 +62,7 @@ export default defineConfig({
 });
 ```
 
-The Vite companion and the PostCSS transformer are separate by design. Register the PostCSS factory explicitly and keep other PostCSS plugins in the same array and order. The companion fails with `BEM010` when the marker is missing. It cannot be used as a Rollup plugin.
+The Vite companion and the PostCSS transformer are separate by design. Register one PostCSS factory explicitly and keep other PostCSS plugins in the same array and order. The companion fails with `BEM010` when the marker is missing or appears more than once. It cannot be used as a Rollup plugin.
 
 ## Minimal example
 
@@ -259,7 +259,7 @@ export default defineConfig({
 
 ### Commit generated type declarations
 
-When Vite processes a CSS Module with `@block` during dev—or during a build with `types: true`—it receives an adjacent declaration such as `Card.module.css.d.ts`. The declaration contains class keys only. TypeScript can then complete the stable class API and reject missing keys.
+When Vite processes a CSS Module with `@block` during dev—or completes a build with `types: true`—it writes an adjacent declaration such as `Card.module.css.d.ts`. The declaration contains class keys only. Build declarations are staged during PostCSS processing and written from Vite's public `closeBundle` hook. Successful builds also write declarations with `build.write: false`. If a failure reaches `buildEnd` or `renderError`, the plugin discards the staged declarations; we verified that a CSS Modules transformation failure preserves the previous declaration. Vite's programmatic build does not forward a later `writeBundle` hook failure to `closeBundle`, so a `.d.ts` may already have changed even when a later `writeBundle` plugin makes the build reject. Declaration preservation is not guaranteed for failures at that stage. Before flushing, the plugin checks ownership of every write target, so `BEM006` leaves all declarations untouched. If a later operating system write fails after that check, updates across multiple declaration files are not transactional.
 
 The generated `.d.ts` is derived from the CSS source. For v0.1, committing it to the consumer repository is recommended so editors and `tsc` can resolve the class dictionary immediately after a clone. Do not edit generated declarations by hand; regenerate them whenever the source CSS changes.
 
@@ -396,7 +396,7 @@ export default defineConfig({
 
 `bem-modules check` validates every CSS Module in the explicit scope through that one Vite build and never changes declarations. `bem-modules sync` uses the same captured schema set, preflights every expected declaration, then creates or updates adjacent `.d.ts` files and removes orphaned, plugin-owned declarations inside that scope. A failed build or ownership preflight leaves declarations unchanged; multiple OS writes are not presented as one transaction. A declaration is not removed merely because its Module is no longer imported—the virtual entry makes the scope explicit.
 
-The CLI requires the standard Vite companion in `plugins` and one direct `createBemPostcssPlugin()` marker in the resolved `css.postcss.plugins` array, then reuses both for capture. The BEM PostCSS transform therefore runs once and stays in the configured array order, while SCSS source-level diagnostics continue through the companion lifecycle. A missing Vite config, companion, direct registration, or an external PostCSS config without these Vite registrations fails with `BEM010`. The CLI does not inject either plugin and does not inspect, load, copy, reconstruct, or override external PostCSS settings. The build loads config with `command: "build"` and the default `mode: "production"`, and it runs the other Vite plugin hooks. Use `--vite-config` to select a side-effect-free config when necessary. With `css.modules: false`, validation and synchronization are disabled and the CLI writes a notice to standard error so this state is distinguishable from an ordinary zero-file result.
+The CLI requires the standard Vite companion in `plugins` and exactly one direct `createBemPostcssPlugin()` marker in the resolved `css.postcss.plugins` array, then reuses both for capture. The BEM PostCSS transform therefore runs once and stays in the configured array order, while SCSS source-level diagnostics continue through the companion lifecycle. A missing or duplicate direct registration, a missing Vite config or companion, or an external PostCSS config without these Vite registrations fails with `BEM010`. The CLI does not inject either plugin and does not inspect, load, copy, reconstruct, or override external PostCSS settings. The build loads config with `command: "build"` and the default `mode: "production"`, and it runs the other Vite plugin hooks. Use `--vite-config` to select a side-effect-free config when necessary. With `css.modules: false`, validation and synchronization are disabled and the CLI writes a notice to standard error so this state is distinguishable from an ordinary zero-file result.
 
 ### Exclude global classes from BEM conversion
 
@@ -441,7 +441,7 @@ Local classes in managed Modules are emitted as final BEM names inside `:global(
 - Static local classes emitted by a Sass partial or mixin are processed as part of the managed Module. Mark shared helper classes explicitly as `:global(.sharedHelper)` when they must remain outside the BEM class API.
 - `?raw`, `?inline`, and `?url` cannot be used with a managed Module.
 - With `css.modules: false`, BEM transformation, query validation, Project validation, and type synchronization are disabled. Query behavior falls back to Vite.
-- `css.modules.localsConvention` and other CSS Modules export options are delegated to Vite. The plugin's declaration file contains only its own class keys; additional runtime aliases are not added to that stable type contract.
+- `css.modules.localsConvention` and other CSS Modules export options are delegated to Vite. While declarations are generated (`types: true` for builds; by default in dev), the supported convention is Vite's default, `camelCase`, or `dashes`. `camelCaseOnly`, `dashesOnly`, and callback forms are rejected with `BEM004` because they can remove source class keys from the runtime object while the declaration still exposes them. With `types: false`, this type-alignment check is skipped.
 - `css.transformer: "lightningcss"` is not supported. Use Vite's default CSS Modules transformer.
 
 ### Diagnostic codes
@@ -456,7 +456,7 @@ Local classes in managed Modules are emitted as final BEM names inside `:global(
 | `BEM006` | An adjacent `.d.ts` is not owned by the plugin |
 | `BEM007` | CSS Modules `composes` is used |
 | `BEM008` | A managed Module is imported with `?raw`, `?inline`, or `?url` |
-| `BEM010` | The BEM PostCSS plugin is not registered in `css.postcss.plugins` |
+| `BEM010` | The BEM PostCSS plugin is missing or registered more than once in `css.postcss.plugins` |
 | `BEM011` | The unsupported Lightning CSS transformer is enabled for CSS Modules |
 
 ## License

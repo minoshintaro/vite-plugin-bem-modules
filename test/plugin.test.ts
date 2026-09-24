@@ -7,8 +7,10 @@ import test from "node:test";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import ts from "typescript";
-import { build, type Plugin, type PluginOption } from "vite";
+import { build, createLogger, type Plugin, type PluginOption } from "vite";
 import bemModules, { createBemPostcssPlugin } from "../src/index.js";
+import { KeyframesRegistry } from "../src/keyframes-registry.js";
+import { resolveOptions } from "../src/options.js";
 
 type HookFunction = (...args: never[]) => unknown;
 
@@ -187,6 +189,275 @@ test("Vite build が BEM class、flat API、d.ts を一つの schema から生�
   }
 });
 
+test("型生成は対応するlocalsConventionでruntime exportとd.tsのkeyを一致させる", async () => {
+  const conventions = [
+    { name: "Vite default", value: undefined },
+    { name: "camelCase", value: "camelCase" as const },
+    { name: "dashes", value: "dashes" as const },
+  ];
+
+  for (const convention of conventions) {
+    const root = await createFixture();
+    try {
+      await fs.writeFile(
+        path.join(root, "main.ts"),
+        "import styles from './Card.module.css'; export const runtimeKeys = Object.keys(styles); export const runtimeStyles = styles;",
+        "utf8",
+      );
+      await build({
+        root,
+        configFile: false,
+        logLevel: "silent",
+        plugins: [testBemModules({ types: true })],
+        ...(convention.value === undefined
+          ? {}
+          : { css: { modules: { localsConvention: convention.value } } }),
+        build: {
+          outDir: "dist",
+          emptyOutDir: true,
+          minify: false,
+          lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
+        },
+      });
+
+      const declaration = await fs.readFile(path.join(root, "Card.module.css.d.ts"), "utf8");
+      const declaredKeys = [...declaration.matchAll(/readonly "([^"]+)": string;/g)]
+        .map((match) => match[1]!)
+        .sort();
+      const jsFile = (await fs.readdir(path.join(root, "dist")))
+        .find((file) => file.endsWith(".js") || file.endsWith(".mjs"));
+      assert.ok(jsFile, convention.name);
+      const built = await import(`${pathToFileURL(path.join(root, "dist", jsFile)).href}?test=${Date.now()}`);
+      const runtimeKeys = (built.runtimeKeys as string[]).sort();
+      assert.deepEqual(runtimeKeys, declaredKeys, convention.name);
+      assert.equal(typeof (built.runtimeStyles as Record<string, unknown>)["root--compact"], "string", convention.name);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("型生成はruntime keyを落とすlocalsConventionをconfig解決時に拒否する", async () => {
+  const unsupportedConventions = [
+    { name: "camelCaseOnly", value: "camelCaseOnly" as const },
+    { name: "dashesOnly", value: "dashesOnly" as const },
+    {
+      name: "function",
+      value: (originalClassName: string) => originalClassName.replace(/-+([a-z0-9])/g, (_match, letter: string) => letter.toUpperCase()),
+    },
+  ];
+
+  for (const convention of unsupportedConventions) {
+    const root = await createFixture();
+    try {
+      await assert.rejects(
+        () => build({
+          root,
+          configFile: false,
+          logLevel: "silent",
+          plugins: [testBemModules({ types: true })],
+          css: { modules: { localsConvention: convention.value } },
+          build: {
+            outDir: "dist",
+            emptyOutDir: true,
+            lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
+          },
+        }),
+        /BEM004.*localsConvention/s,
+        convention.name,
+      );
+      await assert.rejects(
+        () => fs.access(path.join(root, "Card.module.css.d.ts")),
+        { code: "ENOENT" },
+        convention.name,
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("同じBEM PostCSS pluginを二重登録するとVite config解決時に失敗する", async () => {
+  const root = await createFixture();
+  const postcssPlugin = createBemPostcssPlugin({ types: true });
+  const companion = bemModules({ types: true });
+  assert.ok(Array.isArray(companion));
+  try {
+    await assert.rejects(
+      () => build({
+        root,
+        configFile: false,
+        logLevel: "silent",
+        plugins: [
+          ...companion,
+          {
+            name: "test-register-duplicate-bem-postcss",
+            config: () => ({ css: { postcss: { plugins: [postcssPlugin, postcssPlugin] } } }),
+          },
+        ],
+        build: {
+          outDir: "dist",
+          emptyOutDir: true,
+          lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
+        },
+      }),
+      /BEM010.*exactly once/s,
+    );
+    await assert.rejects(
+      () => fs.access(path.join(root, "Card.module.css.d.ts")),
+      { code: "ENOENT" },
+    );
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("CSS Modulesの後段処理に失敗したbuildは新しいd.tsを残さない", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-failed-css-modules-"));
+  const previousDeclaration = "// Generated by vite-plugin-bem-modules. Do not edit.\n// previous successful type\n";
+  let bemPostcssRan = false;
+  const postcssPlugin = createBemPostcssPlugin({ types: true });
+  const afterBemPlugin = {
+    postcssPlugin: "test-after-bem-postcss",
+    Once(root: { walkRules(callback: (rule: { selector: string }) => void): void }) {
+      root.walkRules((rule) => {
+        if (rule.selector === ":export") bemPostcssRan = true;
+      });
+    },
+  };
+  const companion = bemModules({ types: true });
+  assert.ok(Array.isArray(companion));
+  try {
+    await fs.writeFile(
+      path.join(root, "Card.module.css"),
+      '/* @block p-card */\n@value missing from "./missing.css";\n.root { color: missing; }\n',
+      "utf8",
+    );
+    await fs.writeFile(path.join(root, "Card.module.css.d.ts"), previousDeclaration, "utf8");
+    await fs.writeFile(path.join(root, "main.ts"), "import styles from './Card.module.css'; export const className = styles.root;", "utf8");
+
+    await assert.rejects(() => build({
+      root,
+      configFile: false,
+      logLevel: "silent",
+      plugins: [
+        ...companion,
+        {
+          name: "test-register-bem-postcss-before-css-modules",
+          config: () => ({ css: { postcss: { plugins: [postcssPlugin, afterBemPlugin] } } }),
+        },
+      ],
+      build: {
+        outDir: "dist",
+        emptyOutDir: true,
+        write: false,
+        minify: false,
+        lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
+      },
+    }));
+
+    assert.equal(bemPostcssRan, true);
+    assert.equal(await fs.readFile(path.join(root, "Card.module.css.d.ts"), "utf8"), previousDeclaration);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("後続writeBundle failureはcloseBundleで通知されず型宣言をrollbackできない", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-failed-write-bundle-"));
+  const previousDeclaration = "// Generated by vite-plugin-bem-modules. Do not edit.\n// previous successful type\n";
+  const lifecycle: string[] = [];
+  const lateFailure = {
+    name: "test-fail-late-write-bundle",
+    writeBundle() {
+      throw new Error("late output failure");
+    },
+  };
+  const observeLifecycle = {
+    name: "test-observe-late-write-bundle-lifecycle",
+    buildEnd(error?: Error) {
+      lifecycle.push(`buildEnd:${error?.message ?? "success"}`);
+    },
+    renderError(error: Error) {
+      lifecycle.push(`renderError:${error.message}`);
+    },
+    closeBundle(error?: Error) {
+      lifecycle.push(`closeBundle:${error?.message ?? "success"}`);
+    },
+  };
+
+  try {
+    await fs.writeFile(path.join(root, "Card.module.css"), "/* @block p-card */ .root {}", "utf8");
+    await fs.writeFile(path.join(root, "Card.module.css.d.ts"), previousDeclaration, "utf8");
+    await fs.writeFile(path.join(root, "main.ts"), "import styles from './Card.module.css'; export const className = styles.root;", "utf8");
+
+    await assert.rejects(
+      () => build({
+        root,
+        configFile: false,
+        logLevel: "silent",
+        plugins: [...testBemModules({ types: true }), lateFailure, observeLifecycle],
+        build: {
+          outDir: "dist",
+          emptyOutDir: true,
+          minify: false,
+          lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
+        },
+      }),
+      /late output failure/,
+    );
+
+    assert.deepEqual(lifecycle, ["buildEnd:success", "closeBundle:success"]);
+    const declaration = await fs.readFile(path.join(root, "Card.module.css.d.ts"), "utf8");
+    assert.match(declaration, /readonly "root": string/);
+    assert.notEqual(declaration, previousDeclaration);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Vite build は BEM module の相対 asset を解決し、source 欠落の警告を出さない", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-assets-"));
+  try {
+    const asset = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="2" height="2"/></svg>';
+    await fs.writeFile(path.join(root, "icon.svg"), asset);
+    await fs.writeFile(
+      path.join(root, "Card.module.css"),
+      "/* @block p-card */\n.root { background: url(./icon.svg); }\n",
+    );
+    await fs.writeFile(path.join(root, "main.ts"), "import styles from './Card.module.css'; document.body.className = styles.root;\n");
+    await fs.writeFile(path.join(root, "index.html"), '<!doctype html><html><body><script type="module" src="/main.ts"></script></body></html>');
+    const warnings: string[] = [];
+    const logger = createLogger("silent");
+    logger.warnOnce = (message) => { warnings.push(message); };
+
+    await build({
+      root,
+      configFile: false,
+      logLevel: "silent",
+      customLogger: logger,
+      plugins: [testBemModules({ types: false })],
+      build: {
+        outDir: "dist",
+        emptyOutDir: true,
+        assetsInlineLimit: 0,
+      },
+    });
+
+    assert.deepEqual(warnings, []);
+    const assetFiles = await fs.readdir(path.join(root, "dist", "assets"));
+    const cssFile = assetFiles.find((file) => file.endsWith(".css"));
+    assert.ok(cssFile);
+    const css = await fs.readFile(path.join(root, "dist", "assets", cssFile), "utf8");
+    const emittedAsset = assetFiles.find((file) => /^icon-[^.]+\.svg$/.test(file));
+    assert.ok(emittedAsset);
+    assert.ok(css.includes(emittedAsset), css);
+    assert.equal(await fs.readFile(path.join(root, "dist", "assets", emittedAsset), "utf8"), asset);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test("flat CSS Module keyだけを公開し、source transformを提供しない", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-flat-api-"));
   try {
@@ -260,6 +531,58 @@ test("types:trueのbuildは隣接d.tsを生成する", async () => {
     await buildFixture(root, [testBemModules({ types: true })]);
     assert.match(await fs.readFile(path.join(root, "Card.module.css.d.ts"), "utf8"), /readonly "rootCompact": string/);
   } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("types:trueのwrite:false buildも隣接d.tsを生成する", async () => {
+  const root = await createFixture();
+  try {
+    await build({
+      root,
+      configFile: false,
+      logLevel: "silent",
+      plugins: [testBemModules({ types: true })],
+      build: {
+        outDir: "dist",
+        emptyOutDir: true,
+        write: false,
+        minify: false,
+        lib: { entry: "main.ts", formats: ["es"], fileName: "index" },
+      },
+    });
+    assert.match(await fs.readFile(path.join(root, "Card.module.css.d.ts"), "utf8"), /readonly "rootCompact": string/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("保留型のflushは全fileの所有権確認に成功してから書き込む", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-dts-flush-preflight-"));
+  const firstCss = path.join(root, "First.module.css");
+  const secondCss = path.join(root, "Second.module.css");
+  const firstDts = `${firstCss}.d.ts`;
+  const secondDts = `${secondCss}.d.ts`;
+  const handwritten = "export default {} as Record<string, string>;\n";
+  const postcssPlugin = createBemPostcssPlugin({ types: true });
+  postcssPlugin.configure({
+    enabled: true,
+    compilerOptions: resolveOptions({ types: true }),
+    dtsMode: "generate",
+    deferDtsWrites: true,
+    keyframesRegistry: new KeyframesRegistry(),
+  });
+
+  try {
+    await fs.writeFile(secondDts, handwritten, "utf8");
+    await postcss([postcssPlugin]).process("/* @block p-first */ .root {}", { from: firstCss });
+    await postcss([postcssPlugin]).process("/* @block p-second */ .root {}", { from: secondCss });
+
+    await assert.rejects(() => postcssPlugin.flushDeferredDts(), /BEM006/);
+    await assert.rejects(() => fs.access(firstDts), { code: "ENOENT" });
+    assert.equal(await fs.readFile(secondDts, "utf8"), handwritten);
+  } finally {
+    postcssPlugin.discardDeferredDts();
     await fs.rm(root, { recursive: true, force: true });
   }
 });
