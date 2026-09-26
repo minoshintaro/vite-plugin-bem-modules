@@ -115,7 +115,7 @@ Vite adapterの責務は次の範囲です。
 - Projectへの任意の`check` / `sync`起動をbuildやserveの契約へ接続する。
 - CSS Module自身の変更時に再compileし、schema projectionが変わったときだけ必要なscript importerをinvalidateする。
 
-`@block`のないCSS Module、virtual module、`node_modules`配下、通常CSS Moduleへの`?raw` / `?inline` / `?url`はVite標準処理へ委譲します。BEM対象に同じqueryが付いた場合は`BEM008`で拒否します。`css.modules: false`では変換・query検査・Projectの検査と型同期を無効にし、Vite自身の制約をそのまま適用します。有効時の`css.transformer: "lightningcss"`は`BEM004`で拒否します。
+`@block`のないCSS Module、virtual module、`node_modules`配下、通常CSS Moduleへの`?raw` / `?inline` / `?url`はVite標準処理へ委譲します。BEM対象に同じqueryが付いた場合は`BEM008`で拒否します。`css.modules: false`では変換・query検査・Projectの検査と型同期を無効にし、Vite自身の制約をそのまま適用します。CSS Modulesの変換に`css.transformer: "lightningcss"`を使う構成は`BEM011`で拒否します。Viteの`build.cssMinify: "lightningcss"`によるビルド時のCSS圧縮は利用できます。
 
 `project.startup`の既定値`"scan"`では、Viteの`buildStart`で明示scope全体をcheckまたはsyncします。`"defer"`ではこの起動時操作だけを行わず、到達したModuleのtransform・HMR・Project増分更新は維持します。CLIの`check` / `sync`は明示操作なので、このVite起動設定には従いません。
 

@@ -363,7 +363,7 @@ bemModules({
 
 ### Validate and synchronize with the CLI
 
-The bundled `bem-modules` CLI validates `bem-modules.config.mjs` at the root, falling back to `.js`, and uses its `project` option to select the explicit scope. `naming`, `globalScope`, `modifierOutput`, and `types` affect processing when Vite config passes that same options object to `bemModules(...)` and `createBemPostcssPlugin(...)`. `--config` keeps this meaning and selects another shared BemModulesOptions file. Vite config is loaded by Vite's standard search from `--root`; pass `--vite-config` only when an explicit Vite config path is needed. `--include` and `--exclude` explicitly override the Project scope. The CLI does not infer or merge differences between the two config files.
+The bundled `bem-modules` CLI reads `bem-modules.config.mjs` at the root, falling back to `.js`, and uses its `project` option to select the explicit scope. Without that file, it uses the project root as the scope. To apply `naming`, `globalScope`, `modifierOutput`, and `types` during Vite processing, import the same options object in Vite config and pass it to `bemModules(...)`. Use `--config` to select another options file. Vite config is loaded by Vite's standard search from `--root`; pass `--vite-config` only when an explicit Vite config path is needed. `--include` and `--exclude` explicitly override the Project scope. The CLI does not infer or merge differences between the two config files.
 
 ```js
 // bem-modules.config.mjs
@@ -382,7 +382,7 @@ import bemConfig from "./bem-modules.config.mjs";
 const config = defineBemModulesConfig(bemConfig);
 export default defineConfig({
   plugins: [bemModules(config)],
-  css: { postcss: { plugins: [createBemPostcssPlugin(config)] } },
+  css: { postcss: { plugins: [createBemPostcssPlugin()] } },
 });
 ```
 
@@ -443,7 +443,7 @@ Local classes in managed Modules are emitted as final BEM names inside `:global(
 - `?raw`, `?inline`, and `?url` cannot be used with a managed Module.
 - With `css.modules: false`, BEM transformation, query validation, Project validation, and type synchronization are disabled. Query behavior falls back to Vite.
 - `css.modules.localsConvention` and other CSS Modules export options are delegated to Vite. While declarations are generated (`types: true` for builds; by default in dev), the supported convention is Vite's default, `camelCase`, or `dashes`. `camelCaseOnly`, `dashesOnly`, and callback forms are rejected with `BEM004` because they can remove source class keys from the runtime object while the declaration still exposes them. With `types: false`, this type-alignment check is skipped.
-- `css.transformer: "lightningcss"` is not supported. Use Vite's default CSS Modules transformer.
+- Using Lightning CSS as the CSS Modules transformer (`css.transformer: "lightningcss"`) is unsupported. Use Vite's default PostCSS transformer. Build-time CSS minification with Lightning CSS (`build.cssMinify: "lightningcss"`) is supported.
 
 ### Diagnostic codes
 
@@ -458,7 +458,7 @@ Local classes in managed Modules are emitted as final BEM names inside `:global(
 | `BEM007` | CSS Modules `composes` is used |
 | `BEM008` | A managed Module is imported with `?raw`, `?inline`, or `?url` |
 | `BEM010` | The BEM PostCSS plugin is missing or registered more than once in `css.postcss.plugins` |
-| `BEM011` | The unsupported Lightning CSS transformer is enabled for CSS Modules |
+| `BEM011` | Lightning CSS is selected as the CSS Modules transformer |
 
 ## License
 

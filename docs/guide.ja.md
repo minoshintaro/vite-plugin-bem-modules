@@ -362,7 +362,7 @@ bemModules({
 
 ### CLIで検査・同期する
 
-同梱の`bem-modules` CLIは、rootの`bem-modules.config.mjs`（次に`.js`）を検証し、`project`を明示scopeの決定に使います。`naming`、`globalScope`、`modifierOutput`、`types`は、Vite configが同じ設定objectを`bemModules(...)`と`createBemPostcssPlugin(...)`へ渡すことで実処理へ反映されます。`--config`はこのshared `BemModulesOptions`を指定する意味を維持します。Vite configは`--root`からViteの標準探索で読み込み、明示指定が必要な場合だけ`--vite-config`を使います。`--include` / `--exclude`はProject scopeを明示的に上書きします。Vite configと`bem-modules.config`の設定差分をCLIが推測・統合することはありません。
+同梱の`bem-modules` CLIは、rootの`bem-modules.config.mjs`（次に`.js`）を読み、`project`を明示scopeの決定に使います。ファイルがなければ、root以下を対象にします。`naming`、`globalScope`、`modifierOutput`、`types`をViteの処理にも反映するには、Vite configから同じ設定objectを読み込んで`bemModules(...)`へ渡します。`--config`で別の設定ファイルを指定できます。Vite configは`--root`からViteの標準探索で読み込み、明示指定が必要な場合だけ`--vite-config`を使います。`--include` / `--exclude`はProject scopeを明示的に上書きします。CLIはVite configと`bem-modules.config`の設定差分を推測・統合しません。
 
 ```js
 // bem-modules.config.mjs
@@ -381,7 +381,7 @@ import bemConfig from "./bem-modules.config.mjs";
 const config = defineBemModulesConfig(bemConfig);
 export default defineConfig({
   plugins: [bemModules(config)],
-  css: { postcss: { plugins: [createBemPostcssPlugin(config)] } },
+  css: { postcss: { plugins: [createBemPostcssPlugin()] } },
 });
 ```
 
@@ -442,7 +442,7 @@ BEM対象のlocal classは最終BEM名の`:global(...)`として出力される�
 - BEM対象のCSS Moduleでは、`?raw`、`?inline`、`?url`は使えません。
 - `css.modules: false`では、BEM変換・query検査・Project検査・型同期を行いません。queryの対応範囲はViteの標準処理に従います。
 - `css.modules.localsConvention`などのCSS Modules export設定はViteへ委譲します。プラグインの型宣言は自身のclass keyだけを含み、追加runtime aliasは安定した型契約に含めません。
-- `css.transformer: "lightningcss"`には対応していません。Vite標準のCSS Modules変換を使用してください。
+- CSS Modulesの変換に`css.transformer: "lightningcss"`を使う構成には対応していません。Vite標準のPostCSS transformerを使用してください。`build.cssMinify: "lightningcss"`によるビルド時のCSS圧縮は利用できます。
 
 ### 診断コード
 
@@ -457,7 +457,7 @@ BEM対象のlocal classは最終BEM名の`:global(...)`として出力される�
 | `BEM007` | CSS Modulesの`composes`が使われている |
 | `BEM008` | BEM対象に`?raw` / `?inline` / `?url`が付いている |
 | `BEM010` | `css.postcss.plugins`にBEM PostCSS pluginが登録されていない |
-| `BEM011` | CSS Modulesで未対応のLightning CSS transformerが有効 |
+| `BEM011` | CSS Modulesの変換にLightning CSS transformerが指定されている |
 
 ## ライセンス
 
