@@ -2,12 +2,12 @@
 
 [English](./README.md) | 日本語
 
-ViteのCSS Modulesを使いながら、出力するクラス名を`p-card`、`p-card__title`、`p-card--compact`のようなBEM名に固定するプラグインです。
+ViteのCSS Modulesを使いながら、出力するクラス名を`c-card`、`c-card__title`、`c-card--compact`のようなBEM名に固定するプラグインです。
 
 コンポーネントでは通常のCSS Modulesと同じように`styles.root`や`styles.title`で参照できます。隣接する型宣言も生成できるため、クラス名の補完と存在確認をTypeScriptへ組み込めます。
 
 ```css
-/* @block p-card */
+/* @block c-card */
 
 .root {}
 .root--compact {}
@@ -15,9 +15,9 @@ ViteのCSS Modulesを使いながら、出力するクラス名を`p-card`、`p-
 ```
 
 ```ts
-styles.root;        // "p-card"
-styles.rootCompact; // "p-card--compact"
-styles.title;       // "p-card__title"
+styles.root;        // "c-card"
+styles.rootCompact; // "c-card--compact"
+styles.title;       // "c-card__title"
 ```
 
 `@block`コメントを書いた`.module.css`と`.module.scss`だけがBEM変換の対象です。コメントのないCSS Module、通常のCSS、依存パッケージ内のCSS ModuleはViteの標準処理へ委ねます。
@@ -74,7 +74,7 @@ export default defineConfig({
 `Card.module.css`を作り、`@block`コメントで出力するBlock名を指定します。Block名をファイル名から推測することはありません。
 
 ```css
-/* @block p-card */
+/* @block c-card */
 
 .root {
   display: grid;
@@ -96,9 +96,9 @@ export default defineConfig({
 
 | CSS Moduleのクラス | 出力されるクラス | コンポーネントからの参照 |
 | --- | --- | --- |
-| `.root` | `p-card` | `styles.root` |
-| `.root--compact` | `p-card--compact` | `styles.rootCompact` |
-| `.title` | `p-card__title` | `styles.title` |
+| `.root` | `c-card` | `styles.root` |
+| `.root--compact` | `c-card--compact` | `styles.rootCompact` |
+| `.title` | `c-card__title` | `styles.title` |
 
 `root`はBlockそのものです。それ以外のBaseクラスはElementになり、Modifierには対応するBaseが必要です。たとえば`.title--large`を定義する場合は`.title`も定義します。
 
@@ -255,7 +255,7 @@ bemModules({
 });
 ```
 
-この設定では、`styles.rootCompact`が`"p-card p-card--compact"`になります。`styles.root`を追加するとBaseが重複するため、Modifierだけを指定します。
+この設定では、`styles.rootCompact`が`"c-card c-card--compact"`になります。`styles.root`を追加するとBaseが重複するため、Modifierだけを指定します。
 
 ### kebab-caseでクラスを書く
 
@@ -268,7 +268,7 @@ bemModules({
 ```
 
 ```css
-/* @block p-card */
+/* @block c-card */
 
 .root {}
 .profile-image {}
@@ -289,7 +289,7 @@ separatorには`"-"`、`"--"`、`"_"`、`"__"`を指定できます。Elementと
 CSS Modules標準の`:global(...)`を利用できます。
 
 ```css
-/* @block p-card */
+/* @block c-card */
 
 :global(.utility) .title {
   display: block;
@@ -322,7 +322,7 @@ SCSSのコンパイル、alias、`additionalData`、custom importer、PostCSS、
 BEM対象のクラス名は静的に確定できる形で書いてください。
 
 ```scss
-/* @block p-card */
+/* @block c-card */
 
 .root {}
 .root--compact {}

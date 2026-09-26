@@ -5,10 +5,10 @@
 A Vite plugin that applies BEM naming rules to CSS Modules in Vite 8. Only CSS Modules with an `@block` declaration are transformed; their generated class names remain available through the familiar CSS Modules API.
 
 ```tsx
-styles.root                    // "p-card"
-styles.rootCompact             // "p-card--compact"
-styles.profileImage            // "p-card__profileImage"
-styles.profileImageRounded     // "p-card__profileImage--rounded"
+styles.root                    // "c-card"
+styles.rootCompact             // "c-card--compact"
+styles.profileImage            // "c-card__profileImage"
+styles.profileImageRounded     // "c-card__profileImage--rounded"
 ```
 
 ## Features
@@ -71,7 +71,7 @@ The Vite companion and the PostCSS transformer are separate by design. Register 
 Declare the Block name in `Card.module.css`, then write classes as you would in any CSS Module:
 
 ```css
-/* @block p-card */
+/* @block c-card */
 
 .root {
   display: flex;
@@ -116,12 +116,12 @@ With the default options, the classes are transformed as follows:
 
 | CSS Module class | Generated BEM class | JavaScript / TypeScript key |
 | --- | --- | --- |
-| `.root` | `p-card` | `styles.root` |
-| `.root--compact` | `p-card--compact` | `styles.rootCompact` |
-| `.profileImage` | `p-card__profileImage` | `styles.profileImage` |
-| `.profileImage--rounded` | `p-card__profileImage--rounded` | `styles.profileImageRounded` |
+| `.root` | `c-card` | `styles.root` |
+| `.root--compact` | `c-card--compact` | `styles.rootCompact` |
+| `.profileImage` | `c-card__profileImage` | `styles.profileImage` |
+| `.profileImage--rounded` | `c-card__profileImage--rounded` | `styles.profileImageRounded` |
 
-By default, a Modifier export contains only the Modifier class. `styles.rootCompact` is `"p-card--compact"`, and `styles.profileImageRounded` is `"p-card__profileImage--rounded"`. Add both the Base and Modifier classes to apply both sets of styles.
+By default, a Modifier export contains only the Modifier class. `styles.rootCompact` is `"c-card--compact"`, and `styles.profileImageRounded` is `"c-card__profileImage--rounded"`. Add both the Base and Modifier classes to apply both sets of styles.
 
 ```tsx
 const className = compact
@@ -129,7 +129,7 @@ const className = compact
   : styles.root;
 ```
 
-To include the Base automatically, set `modifierOutput: "withBase"`. In that mode, `styles.rootCompact` becomes `"p-card p-card--compact"`. Do not combine it with `styles.root`, or the Base class will be duplicated.
+To include the Base automatically, set `modifierOutput: "withBase"`. In that mode, `styles.rootCompact` becomes `"c-card c-card--compact"`. Do not combine it with `styles.root`, or the Base class will be duplicated.
 
 ## CSS rules
 
@@ -138,7 +138,7 @@ To include the Base automatically, set `modifierOutput: "withBase"`. In that mod
 A CSS Module managed by this plugin must contain exactly one `@block` declaration:
 
 ```css
-/* @block p-card */
+/* @block c-card */
 ```
 
 The Block name is never inferred from the file name. A CSS Module without `@block` is left to Vite's standard CSS Modules processing.
@@ -156,9 +156,9 @@ A file cannot declare more than one `@block`. v0.2 allows the same Block or gene
 ```
 
 ```text
-.root          → p-card
-.title         → p-card__title
-.title--large  → p-card__title--large
+.root          → c-card
+.title         → c-card__title
+.title--large  → c-card__title--large
 ```
 
 Every Base other than `root` is an Element. A Modifier must have a corresponding Base: defining `.title--large` also requires `.title`.
@@ -186,7 +186,7 @@ bemModules({
 ```
 
 ```css
-/* @block p-card */
+/* @block c-card */
 
 .root {}
 .profile-image {}
@@ -221,7 +221,7 @@ bemModules({
 .root-primary {}
 ```
 
-Here, `.root-primary` is a Modifier of `root`, and the generated class is `p-card-primary`.
+Here, `.root-primary` is a Modifier of `root`, and the generated class is `c-card-primary`.
 
 Configure the Element separator independently with `elementSeparator`:
 
@@ -234,7 +234,7 @@ bemModules({
 });
 ```
 
-With this configuration, `.title-large` becomes `p-card_title-large`. Separators may be `-`, `--`, `_`, or `__`, but the Element and Modifier separators must differ.
+With this configuration, `.title-large` becomes `c-card_title-large`. Separators may be `-`, `--`, `_`, or `__`, but the Element and Modifier separators must differ.
 
 ## Main options
 
@@ -254,8 +254,8 @@ export default defineConfig({
 
 | Option | `styles.rootCompact` | `styles.profileImageRounded` |
 | --- | --- | --- |
-| `"only"` | `"p-card--compact"` | `"p-card__profileImage--rounded"` |
-| `"withBase"` | `"p-card p-card--compact"` | `"p-card__profileImage p-card__profileImage--rounded"` |
+| `"only"` | `"c-card--compact"` | `"c-card__profileImage--rounded"` |
+| `"withBase"` | `"c-card c-card--compact"` | `"c-card__profileImage c-card__profileImage--rounded"` |
 
 ### Commit generated type declarations
 

@@ -2,7 +2,7 @@
 
 English | [日本語](./README.ja.md)
 
-A Vite plugin that outputs CSS Module classes as BEM names such as `p-card` and `p-card__title`. Components access them through familiar keys such as `styles.root` and `styles.title`, with TypeScript completion.
+A Vite plugin that outputs CSS Module classes as BEM names such as `c-card` and `c-card__title`. Components access them through familiar keys such as `styles.root` and `styles.title`, with TypeScript completion.
 
 Only files containing an `@block` comment in their CSS source are converted, so existing CSS Modules can remain unchanged.
 
@@ -34,10 +34,10 @@ export default defineConfig({
 
 ### 2. Declare the Block in CSS
 
-At the top of `Card.module.css`, write an `@block` comment as shown below. The plugin reads this comment and uses `p-card` as the Block name; it never infers the name from the file name.
+At the top of `Card.module.css`, write an `@block` comment as shown below. The plugin reads this comment and uses `c-card` as the Block name; it never infers the name from the file name.
 
 ```css
-/* @block p-card */
+/* @block c-card */
 
 .root {
   display: flex;
@@ -56,9 +56,9 @@ At the top of `Card.module.css`, write an `@block` comment as shown below. The p
 
 | CSS class | Generated BEM class | Access |
 | --- | --- | --- |
-| `.root` | `p-card` | `styles.root` |
-| `.root--compact` | `p-card--compact` | `styles.rootCompact` |
-| `.title` | `p-card__title` | `styles.title` |
+| `.root` | `c-card` | `styles.root` |
+| `.root--compact` | `c-card--compact` | `styles.rootCompact` |
+| `.title` | `c-card__title` | `styles.title` |
 
 Files without an `@block` comment use ordinary CSS Modules processing.
 
@@ -88,7 +88,7 @@ Set `modifierOutput: "withBase"` when registering the plugin to apply both class
 bemModules({ modifierOutput: "withBase" });
 ```
 
-With this option, `styles.rootCompact` is `"p-card p-card--compact"`. Do not add `styles.root` again.
+With this option, `styles.rootCompact` is `"c-card c-card--compact"`. Do not add `styles.root` again.
 
 ### Change separators and name spelling
 
@@ -96,8 +96,8 @@ Configure separators and the spelling of names in CSS through the `naming` optio
 
 | Option | Default | What it changes |
 | --- | --- | --- |
-| `naming.elementSeparator` | `"__"` | The separator between Block and Element in output names (`p-card__title`) |
-| `naming.modifierSeparator` | `"--"` | The separator before a Modifier in both source CSS and output names (`.root--compact`, `p-card--compact`) |
+| `naming.elementSeparator` | `"__"` | The separator between Block and Element in output names (`c-card__title`) |
+| `naming.modifierSeparator` | `"--"` | The separator before a Modifier in both source CSS and output names (`.root--compact`, `c-card--compact`) |
 | `naming.wordCase` | `"camel"` | The spelling of names in CSS; `"kebab"` allows names such as `.profile-image` |
 
 JavaScript keys remain camelCase, such as `styles.profileImage`, even with kebab-case input. See the [usage guide](https://github.com/minoshintaro/vite-plugin-bem-modules/blob/main/docs/guide.md) for supported separator combinations and configuration examples.

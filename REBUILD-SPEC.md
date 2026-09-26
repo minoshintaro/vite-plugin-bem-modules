@@ -65,10 +65,10 @@
 ```ts
 import styles from "./Card.module.css";
 
-styles.root; // "p-card"
-styles.rootCompact; // "p-card--compact"
-styles.profileImage; // "p-card__profileImage"
-styles.profileImageRounded; // "p-card__profileImage--rounded"
+styles.root; // "c-card"
+styles.rootCompact; // "c-card--compact"
+styles.profileImage; // "c-card__profileImage"
+styles.profileImageRounded; // "c-card__profileImage--rounded"
 ```
 
 - runtime の styles object に存在する key だけを、TypeScript で参照できる class key として宣言する。型生成時にこの対応を保てない Vite 設定は config 解決時に拒否する。

@@ -5,10 +5,10 @@
 Vite 8のCSS ModulesにBEMの命名規則を適用し、生成されたclass名を提供するプラグインです。`@block`を付けたCSS ModuleだけがBEMの対象になり、生成されたclassは通常のCSS Modulesと同じように参照できます。
 
 ```tsx
-styles.root                    // "p-card"
-styles.rootCompact             // "p-card--compact"
-styles.profileImage            // "p-card__profileImage"
-styles.profileImageRounded     // "p-card__profileImage--rounded"
+styles.root                    // "c-card"
+styles.rootCompact             // "c-card--compact"
+styles.profileImage            // "c-card__profileImage"
+styles.profileImageRounded     // "c-card__profileImage--rounded"
 ```
 
 ## できること
@@ -71,7 +71,7 @@ Vite companionとPostCSS transformerは役割を分けています。PostCSS fac
 `Card.module.css`にBlock名を宣言し、通常のCSS Modulesと同じようにclassを書きます。
 
 ```css
-/* @block p-card */
+/* @block c-card */
 
 .root {
   display: flex;
@@ -116,12 +116,12 @@ export function Card({ compact = false, rounded = false }: CardProps) {
 
 | CSS Moduleのclass | 生成されるBEM class | JavaScript / TypeScriptでの参照 |
 | --- | --- | --- |
-| `.root` | `p-card` | `styles.root` |
-| `.root--compact` | `p-card--compact` | `styles.rootCompact` |
-| `.profileImage` | `p-card__profileImage` | `styles.profileImage` |
-| `.profileImage--rounded` | `p-card__profileImage--rounded` | `styles.profileImageRounded` |
+| `.root` | `c-card` | `styles.root` |
+| `.root--compact` | `c-card--compact` | `styles.rootCompact` |
+| `.profileImage` | `c-card__profileImage` | `styles.profileImage` |
+| `.profileImage--rounded` | `c-card__profileImage--rounded` | `styles.profileImageRounded` |
 
-Modifierのexportは、既定ではModifierのclassだけを返します。`styles.rootCompact`は`"p-card--compact"`、`styles.profileImageRounded`は`"p-card__profileImage--rounded"`になります。BaseとModifierの両方のスタイルを適用するには、両方のclassを指定します。
+Modifierのexportは、既定ではModifierのclassだけを返します。`styles.rootCompact`は`"c-card--compact"`、`styles.profileImageRounded`は`"c-card__profileImage--rounded"`になります。BaseとModifierの両方のスタイルを適用するには、両方のclassを指定します。
 
 ```tsx
 const className = compact
@@ -129,7 +129,7 @@ const className = compact
   : styles.root;
 ```
 
-BaseをModifierへ自動で含める場合は、`modifierOutput: "withBase"`を指定します。この場合、`styles.rootCompact`は`"p-card p-card--compact"`になります。`styles.root`と併用するとBaseが重複するため、どちらか一方を使います。
+BaseをModifierへ自動で含める場合は、`modifierOutput: "withBase"`を指定します。この場合、`styles.rootCompact`は`"c-card c-card--compact"`になります。`styles.root`と併用するとBaseが重複するため、どちらか一方を使います。
 
 ## CSSのルール
 
@@ -138,7 +138,7 @@ BaseをModifierへ自動で含める場合は、`modifierOutput: "withBase"`を�
 BEMとして扱うCSS Moduleには、`@block`を1つだけ書きます。
 
 ```css
-/* @block p-card */
+/* @block c-card */
 ```
 
 Block名はファイル名から推測されません。`@block`のないCSS ModuleはBEMの対象にならず、ViteのCSS Modulesとして処理されます。
@@ -156,9 +156,9 @@ Block名はファイル名から推測されません。`@block`のないCSS Mod
 ```
 
 ```text
-.root          → p-card
-.title         → p-card__title
-.title--large  → p-card__title--large
+.root          → c-card
+.title         → c-card__title
+.title--large  → c-card__title--large
 ```
 
 `root`以外のBaseはElementとして扱われます。Modifierには対応するBaseが必要です。`.title--large`を書く場合は、`.title`も定義してください。
@@ -186,7 +186,7 @@ bemModules({
 ```
 
 ```css
-/* @block p-card */
+/* @block c-card */
 
 .root {}
 .profile-image {}
@@ -221,7 +221,7 @@ bemModules({
 .root-primary {}
 ```
 
-この場合、`.root-primary`は`root`のModifierとして扱われ、生成されるclassは`p-card-primary`になります。
+この場合、`.root-primary`は`root`のModifierとして扱われ、生成されるclassは`c-card-primary`になります。
 
 Elementとの区切りは`elementSeparator`で個別に指定できます。
 
@@ -234,7 +234,7 @@ bemModules({
 });
 ```
 
-この設定では、CSSに`.title-large`と書くと`p-card_title-large`になります。separatorには`-`、`--`、`_`、`__`を指定できますが、ElementとModifierに同じ値は使えません。
+この設定では、CSSに`.title-large`と書くと`c-card_title-large`になります。separatorには`-`、`--`、`_`、`__`を指定できますが、ElementとModifierに同じ値は使えません。
 
 ## 主な設定
 
@@ -254,8 +254,8 @@ export default defineConfig({
 
 | 設定 | `styles.rootCompact` | `styles.profileImageRounded` |
 | --- | --- | --- |
-| `"only"` | `"p-card--compact"` | `"p-card__profileImage--rounded"` |
-| `"withBase"` | `"p-card p-card--compact"` | `"p-card__profileImage p-card__profileImage--rounded"` |
+| `"only"` | `"c-card--compact"` | `"c-card__profileImage--rounded"` |
+| `"withBase"` | `"c-card c-card--compact"` | `"c-card__profileImage c-card__profileImage--rounded"` |
 
 ### 型宣言をコミットする
 
