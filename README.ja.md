@@ -67,7 +67,7 @@ export default defineConfig({
 });
 ```
 
-`createBemPostcssPlugin()`の登録は必須です。ほかのPostCSSプラグインがある場合は、実行したい順序に合わせて同じ`plugins`配列に並べてください。このプラグインは順序を変更しません。例の`types: true`は、ビルド中にも型宣言を生成する設定です。
+`createBemPostcssPlugin()`の登録は必須です。ほかのPostCSSプラグインがある場合は、同じ`plugins`配列に登録してください。配列内で先に置いたプラグインでも、visitorの処理段階によってはこのプラグインの解析後に実行されます。その段階で追加・改名されるクラスは対応範囲外です。例の`types: true`は、ビルド中にも型宣言を生成する設定です。
 
 ### 2. CSS ModuleにBlock名を書く
 
@@ -370,6 +370,7 @@ BEM対象のCSS Module内では、IDと`@keyframes`をCSS Modulesのexportに含
 - Sassの`&--modifier`、セレクタの補間、`@at-root`、`@extend`
 - CSS Modulesの変換に`css.transformer: "lightningcss"`を使う構成
 - フレームワークが生成する`<style module>`など、実体パスのない仮想CSS Module
+- BEM解析後に別のPostCSSプラグインが追加・改名するクラス（`Rule`や`AtRule`のvisitorを含む）
 
 読み込み中のCSS Moduleを削除すると、importの解決が失敗します。隣接する型宣言と内部の登録情報は掃除しますが、読み込み元のimport文は自動修正しません。
 
