@@ -273,7 +273,7 @@ git diff --exit-code
 test -z "$(git ls-files --others --exclude-standard -- '*.module.css.d.ts' '*.module.scss.d.ts')"
 ```
 
-Run synchronization before type checking, then build. The final command fails when a newly generated `.d.ts` remains untracked. See [Validate and synchronize with the CLI](#validate-and-synchronize-with-the-cli) for shared configuration and package-script examples.
+Use this sequence when declarations may be stale, such as after changing a CSS Module or settings that affect class keys. Committed declarations do not need to be regenerated for every local build. CI can run this sequence on every build to detect stale declarations; the final command fails when a newly generated `.d.ts` remains untracked. See [Validate and synchronize with the CLI](#validate-and-synchronize-with-the-cli) for shared configuration and package-script examples.
 
 #### Optional build-time synchronization
 

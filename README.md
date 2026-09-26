@@ -123,7 +123,7 @@ To validate or synchronize without starting Vite, run the bundled CLI through pa
 
 `npm run bem:check` validates without changing declarations; `npm run bem:sync` validates and synchronizes CSS Module declarations. The CLI creates one `write: false` programmatic Vite build with a virtual entry that imports the complete Project scope. Sass, `additionalData`, aliases, custom importers, PostCSS ordering, CSS Modules, and worker shutdown therefore remain Vite responsibilities. A Vite-compatible Sass implementation such as `sass-embedded` is required in CI when the scope contains `.module.scss` files.
 
-Treat declarations as inputs to type checking: run `bem-modules sync`, then `tsc`, then `vite build`. Commit the generated declarations so editors and type checks can use them immediately after a clone. Build-time generation with `types: true` remains available for Modules processed by that build, but it cannot supply declarations to an earlier type check.
+Treat declarations as inputs to type checking. When CSS Modules or settings that affect their class keys change, run `bem-modules sync` before `tsc` and `vite build`. Commit the generated declarations; ordinary builds can then use them without running `sync` again. In CI, run `sync` and check for generated-file changes to catch stale declarations. Build-time generation with `types: true` remains available for Modules processed by that build, but it cannot supply declarations to an earlier type check.
 
 That build loads Vite config with `command: "build"` and Vite's default `mode: "production"`, and it runs the other plugin hooks in the selected config. Keep those hooks free of unsafe side effects for CLI use, or select a dedicated config with `--vite-config <path>`.
 
