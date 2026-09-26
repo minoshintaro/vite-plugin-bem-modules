@@ -168,7 +168,8 @@ test("実Vite dev serverでCSS変更をProjectとflat API・d.tsへ同期する"
 });
 
 test("Viteの並行リクエストでも同名Blockを許容し、各Moduleを処理する", async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-dev-concurrent-"));
+  const fixtureParent = process.platform === "win32" ? process.cwd() : os.tmpdir();
+  const root = await fs.mkdtemp(path.join(fixtureParent, "bem-modules-dev-concurrent-"));
   let server: Awaited<ReturnType<typeof createServer>> | null = null;
   try {
     const names = Array.from({ length: 8 }, (_, index) => `Card${index}.module.css`);
@@ -190,8 +191,9 @@ test("Viteの並行リクエストでも同名Blockを許容し、各Moduleを�
     }
     const activeServer = server;
     const results = await Promise.allSettled(names.map((name) => activeServer.transformRequest(`/${name}`)));
+    const failures = results.filter((result) => result.status === "rejected");
+    assert.deepEqual(failures.map((result) => String(result.reason)), []);
     assert.equal(results.filter((result) => result.status === "fulfilled").length, names.length);
-    assert.equal(results.filter((result) => result.status === "rejected").length, 0);
     for (const [index, result] of results.entries()) {
       const dtsFile = path.join(root, `${names[index]}.d.ts`);
       if (result.status === "fulfilled") {

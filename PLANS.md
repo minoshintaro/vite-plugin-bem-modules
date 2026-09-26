@@ -93,6 +93,7 @@ bridge版の検証では、`CI=true /Users/minos/.agents/bin/agent-test -- npm t
 ## 公開版0.1.0のtagとRelease
 
 - 2026-09-26の公開前検証で、BEM解析をPostCSSの`OnceExit`へ移すと、Vite 8.2.1のCSS Modules処理が先にclassをhash化し、元のclass名をBEM003で解析できないことをbuildで観測した。`Once`を維持し、後段visitorが追加・改名するclassは0.1.0の非対応範囲とする。PostCSS plugin配列順だけでこの範囲を保証する説明はREADMEから外す。
+- Windows CIの一時ユーザーdirectoryでは、Viteが短縮パス`RUNNER~1`を解決に用いるケースがあり、直接dev requestのfixtureが不安定だった。該当fixtureはWindowsではcheckout上に作り、並行requestの失敗理由をテスト出力へ残す。
 
 - 2026-09-26にGitHub側の`v0.1.0` tagと公開済みReleaseを確認した。旧tarballは現在のAPIと一致しない。tag付け替えは利用者が許可済みで、修正コミットとCIの確定後に行う。
 - 公開版のGitHub Releaseと配布物は、初回公開版`0.1.0`として作成する。内部の作業ラベルを公開済みバージョンとして扱わない。
