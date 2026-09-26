@@ -178,6 +178,8 @@ pnpm bem:sync
 - `check`: 対象ファイルを検査する。型宣言は変更しない
 - `sync`: 検査後に型宣言を生成・更新し、対象範囲内の孤立した生成物を削除する
 
+型宣言は型検査の入力なので、通常は`bem-modules sync → tsc → vite build`の順に実行します。生成された宣言をコミットしておけば、clone直後のエディタと型検査でも利用できます。`types: true`によるbuild中の生成は補助機能として使えますが、そのbuildより前の型検査には間に合いません。
+
 CLIは、対象範囲のCSS / SCSS Moduleをvirtual entryからimportする一回のVite `write: false` buildとして動きます。Sassの展開、`additionalData`、alias、custom importer、PostCSSの順序、CSS Modules、worker lifecycleはViteへ委譲します。CIで`.module.scss`を含むscopeを検査する場合は、Viteが利用できるSass実装（`sass-embedded`など）を依存に含めてください。
 
 このbuildはViteの`command: "build"`と既定の`mode: "production"`で設定を読み、Vite config内の他plugin hookも実行します。CLI用に副作用のないVite configを使うか、必要なら`--vite-config <path>`で専用configを指定してください。

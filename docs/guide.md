@@ -261,22 +261,23 @@ export default defineConfig({
 
 When Vite processes a CSS Module with `@block` during dev—or completes a build with `types: true`—it writes an adjacent declaration such as `Card.module.css.d.ts`. The declaration contains class keys only. Build declarations are staged during PostCSS processing and written from Vite's public `closeBundle` hook. Successful builds also write declarations with `build.write: false`. If a failure reaches `buildEnd` or `renderError`, the plugin discards the staged declarations; we verified that a CSS Modules transformation failure preserves the previous declaration. Vite's programmatic build does not forward a later `writeBundle` hook failure to `closeBundle`, so a `.d.ts` may already have changed even when a later `writeBundle` plugin makes the build reject. Declaration preservation is not guaranteed for failures at that stage. Before flushing, the plugin checks ownership of every write target, so `BEM006` leaves all declarations untouched. If a later operating system write fails after that check, updates across multiple declaration files are not transactional.
 
-The generated `.d.ts` is derived from the CSS source. For v0.1, committing it to the consumer repository is recommended so editors and `tsc` can resolve the class dictionary immediately after a clone. Do not edit generated declarations by hand; regenerate them whenever the source CSS changes.
+The generated `.d.ts` is derived from the CSS source and is an input to type checking. Commit it to the consumer repository so editors and `tsc` can resolve the class dictionary immediately after a clone. Do not edit generated declarations by hand; regenerate them whenever the source CSS changes.
 
 The bundled CLI is the primary way to synchronize CSS declarations without starting a Vite dev server. It collects the same Project scope and runs one `write: false` programmatic Vite build whose virtual entry side-effect-imports every collected Module. Sass, `additionalData`, aliases, custom importers, PostCSS ordering, CSS Modules, and worker lifecycle therefore remain in Vite's pipeline. CI that includes `.module.scss` needs a Sass implementation available to Vite, such as `sass-embedded`.
 
 ```sh
 bem-modules sync
 tsc --noEmit
+vite build
 git diff --exit-code
 test -z "$(git ls-files --others --exclude-standard -- '*.module.css.d.ts' '*.module.scss.d.ts')"
 ```
 
-The final command fails when a newly generated `.d.ts` remains untracked. See [Validate and synchronize with the CLI](#validate-and-synchronize-with-the-cli) for shared configuration and package-script examples.
+Run synchronization before type checking, then build. The final command fails when a newly generated `.d.ts` remains untracked. See [Validate and synchronize with the CLI](#validate-and-synchronize-with-the-cli) for shared configuration and package-script examples.
 
-#### Synchronize during a Vite build
+#### Optional build-time synchronization
 
-To make declaration generation part of the Vite build lifecycle, use a dedicated configuration with `types: true`:
+To make declaration generation part of the Vite build lifecycle, use a dedicated configuration with `types: true`. This can help generate declarations for Modules processed by that build, but does not supply them to an earlier type check:
 
 ```ts
 // vite.types.config.ts
