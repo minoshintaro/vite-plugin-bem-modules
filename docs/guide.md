@@ -46,7 +46,7 @@ The package root exports the following API:
 | `isBemGlobalClassName` | Helper for applying the same global-class matching rules elsewhere |
 | `BemGlobalScopeOptions`, `BemModulesOptions`, `BemNamingOptions`, `BemOutputSeparator`, `BemProjectOptions`, `BemProjectStartup`, `ModifierOutput`, `WordCase` | Types for `naming`, `globalScope`, `modifierOutput`, `types`, and `project` options |
 
-The stable generated type surface contains class keys only. ID, keyframes, `@value`, and arbitrary ICSS export keys are intentionally outside the v0.2 TypeScript API.
+The stable generated type surface contains class keys only. ID, keyframes, `@value`, and arbitrary ICSS export keys are intentionally outside the v0.1 TypeScript API.
 
 ## Add the plugin to Vite
 
@@ -143,7 +143,7 @@ A CSS Module managed by this plugin must contain exactly one `@block` declaratio
 
 The Block name is never inferred from the file name. A CSS Module without `@block` is left to Vite's standard CSS Modules processing.
 
-A file cannot declare more than one `@block`. v0.2 allows the same Block or generated class name in multiple Modules; CSS keeps the normal global cascade semantics.
+A file cannot declare more than one `@block`. v0.1 allows the same Block or generated class name in multiple Modules; CSS keeps the normal global cascade semantics.
 
 ### `root` and Elements
 
@@ -347,7 +347,7 @@ bemModules({
 });
 ```
 
-`project.include` / `project.exclude` define the explicit scope for `check` and `sync`, including Modules that are not imported. The CLI imports that complete scope through its virtual entry; it does not call the compiler or Vite's experimental `preprocessCSS` separately. Project-wide Block-name and generated-class uniqueness checks are not part of v0.2.
+`project.include` / `project.exclude` define the explicit scope for `check` and `sync`, including Modules that are not imported. The CLI imports that complete scope through its virtual entry; it does not call the compiler or Vite's experimental `preprocessCSS` separately. Project-wide Block-name and generated-class uniqueness checks are not part of v0.1.
 
 The Vite companion does not run a full-scope Project `check` / `sync` during `buildStart`. It lets the registered PostCSS plugin generate declarations for Modules that Vite actually processes. Both `project.startup: "scan"` and `"defer"` remain accepted for configuration compatibility, but neither starts a full-scope scan; explicit CSS synchronization belongs to the CLI operation.
 

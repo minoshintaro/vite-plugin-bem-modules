@@ -1,8 +1,8 @@
-# v0.2設計契約
+# v0.1設計契約
 
-この文書は、`vite-plugin-bem-modules` v0.2の設計契約を定める。現行v0.1の契約は[`SPEC.md`](SPEC.md)が所有し、この文書によって置き換えない。作業の状態、保守ブランチとの分離、隔離試作の観測記録は[`PLANS.md`](PLANS.md)を参照する。
+この文書は、初回公開版`vite-plugin-bem-modules` v0.1.0の設計契約を定める。公開前の先行実装の記録は[`SPEC.md`](SPEC.md)を参照する。この仕様は公開版の利用者向け契約を所有し、先行実装からの移行を前提にしない。作業の状態と内部の開発経緯は[`PLANS.md`](PLANS.md)を参照する。
 
-この契約は、class の TypeScript API と、BEM class・ID・keyframes をグローバルな CSS 名として扱うことを中心にする。隔離試作で成立した方式を製品実装の要件へ昇格するが、依存関係、npm 公開、現行 v0.1 の保守経路は別に扱う。
+この契約は、class の TypeScript API と、BEM class・ID・keyframes をグローバルな CSS 名として扱うことを中心にする。隔離試作で成立した方式を初回公開版の要件へ採用し、依存関係やViteの処理はホスト基盤へ委譲する。
 
 ## 1. 目的と適用範囲
 
@@ -13,22 +13,22 @@
 - `/* @block <name> */` を持つ CSS Module の BEM class 変換。
 - Sass の展開、PostCSS の実行、CSS Modules の runtime object 生成、CSS asset の bundling は Vite に委譲する。
 
-作り直しの主な出力は、変換後の CSS と、通常の CSS Modules import から得る class export である。class export の値は、ハッシュではなく生成された BEM class 名になる。
+公開版の主な出力は、変換後の CSS と、通常の CSS Modules import から得る class export である。class export の値は、ハッシュではなく生成された BEM class 名になる。
 
 ### 1.2 対象外
 
 - JavaScript / TypeScript の import 文や component source の書き換え。
 - Sass compiler、PostCSS runner、CSS Modules 実装、module graph、asset bundler の代替実装。
-- class 以外の export を、現行 v0.1 と同じ形で維持するためだけの互換層。
+- class 以外の export を、非公開の先行実装と同じ形で維持するためだけの互換層。
 - BEM class 名をプロジェクト全体で一意にするための hash、prefix、または Project-wide uniqueness check。
-- Vite 6 / 7への対応。v0.2の初期対象は、現行`peerDependencies`と同じVite 8とする。
+- Vite 6 / 7への対応。初回公開版の対象は、現行`peerDependencies`と同じVite 8とする。
 - 依存packageやframework固有のvirtual CSS Moduleを、管理対象Moduleとして所有すること。
 
 ## 2. 用語
 
-- **管理対象 Module**: `@block` 宣言を持ち、作り直しの BEM 変換へ入る CSS Module。
+- **管理対象 Module**: `@block` 宣言を持ち、公開版の BEM 変換へ入る CSS Module。
 - **通常 Module**: `@block` 宣言を持たず、BEM plugin の所有外にある CSS Module。
-- **class export API**: `import styles from "./Card.module.css"` で得る default styles object のうち、BEM class に対応する key と string value。作り直しで安定性を保証する TypeScript API はこれである。
+- **class export API**: `import styles from "./Card.module.css"` で得る default styles object のうち、BEM class に対応する key と string value。公開版で安定性を保証する TypeScript API はこれである。
 - **グローバル名**: CSS Modules のファイル単位の hash や scope 変換を受けず、出力 CSS にそのまま現れる class、ID、keyframes の名前。
 
 ## 3. 確定した契約
@@ -38,13 +38,13 @@
 1. 管理対象 Module は、CSS comment の `@block` 宣言を一つ持つ。Block 名は宣言された値を使い、ファイル名から推測しない。
 2. `@block` がない Module は通常 Module として Vite に委譲する。BEM の class 変換、BEM 用の export 書き換え、class-only型生成、keyframes警告の観測を適用しない。
 3. `@block` の解析は CSS / SCSS の構文として行う。文字列の固定置換だけで selector、宣言値、animation 名を変換する方式は製品経路に採用しない。
-4. 一つの Module に複数の `@block` がある場合の診断は、既存 v0.1 の「一つの宣言」という境界を引き継ぐ。診断コードやメッセージは実装前に確定する。
+4. 一つの Module に複数の `@block` がある場合の診断は、非公開の先行実装と同じく「一つの宣言」を境界とする。診断コードやメッセージは実装前に確定する。
 5. `BEM008`の所有検査は`raw` / `inline` / `url` queryを持つsource specifierだけを解決する。通常importの不要な解決は行わず、path形式の`virtual:` / `virtual/` specifierは既存の委譲境界を維持するために例外として扱う。
 6. path形式のvirtual specifierが実体path風のresolved IDへ解決された場合、そのresolved IDはsource provenanceに基づく恒久的な除外集合へ登録する。一回だけ消費するflagは使わず、同じIDを通常importが共有しても処理順に関係なく所有外とする。無効化中の登録は行わず、disabledからenabledへ戻る境界では通常の対象判定を再開する。
 
 ### 3.2 BEM class の名前
 
-管理対象 Module の local class は、次の意味で BEM class へ投影する。現行 v0.1 の `root`、Element、Modifier の分類と separator 設定を基本にする。
+管理対象 Module の local class は、次の意味で BEM class へ投影する。非公開の先行実装の `root`、Element、Modifier の分類と separator 設定を基本にする。
 
 | source class | 出力 class の意味 |
 | --- | --- |
@@ -54,7 +54,7 @@
 | `.element--large` | Block 名 + Element separator + `element` + Modifier separator + `large` |
 
 - Modifier は対応する Base class を必要とする。
-- `wordCase`、Element separator、Modifier separator、および Modifier export の値をどの設定 API で指定するかは、現行 v0.1 の命名概念を引き継ぐ。ただし、新設計で不要になる設定は実装前にこの文書へ反映してから固定する。
+- `wordCase`、Element separator、Modifier separator、および Modifier export の値をどの設定 API で指定するかは、非公開の先行実装の命名概念を引き継ぐ。ただし、新設計で不要になる設定は実装前にこの文書へ反映してから固定する。
 - 生成した BEM class は hash しない。plugin が class ごとに一意な suffix を付けることも必須にしない。
 - 別の Module が同じ Block 名または同じ生成 class 名を使っても、既定では衝突エラーにしない。これは CSS 名をグローバルに扱うための意図した契約である。衝突時の CSS の意味は、通常のグローバル CSS の cascade に従う。
 
@@ -72,7 +72,7 @@ styles.profileImageRounded; // "c-card__profileImage--rounded"
 ```
 
 - runtime の styles object に存在する key だけを、TypeScript で参照できる class key として宣言する。型生成時にこの対応を保てない Vite 設定は config 解決時に拒否する。
-- source の Modifier key は、現行 v0.1 と同じく CSS Modules の通常の key 変換規則に従って flat API へ投影する。例では `root--compact` を `rootCompact` として参照できる。
+- source の Modifier key は、非公開の先行実装と同じく CSS Modules の通常の key 変換規則に従って flat API へ投影する。例では `root--compact` を `rootCompact` として参照できる。
 - 型を生成する間、`css.modules.localsConvention` は省略時のVite既定値、`"camelCase"`、`"dashes"`をサポートする。`"camelCaseOnly"`、`"dashesOnly"`、関数形式は元のclass keyをruntime objectから除く場合があるため、`BEM004`で拒否する。`types: false`で型を生成しない場合、この型整合検査は行わない。
 - class export の値は、`modifierOutput` の設定に応じて Modifier だけ、または Base と Modifier の組み合わせになる。生成 class 自体は常にグローバル名である。
 - plugin は TypeScript / JavaScript source を書き換えない。default styles object の生成と import 解決は Vite の CSS Modules に任せる。
@@ -96,12 +96,12 @@ styles.profileImageRounded; // "c-card__profileImage--rounded"
 
 ### 3.6 非class export の互換差分
 
-現行 v0.1 は schema の `nonClassExportNames` と隣接 `.d.ts` により、keyframes、ICSS `@value`、`:export` 由来の key を扱う。作り直しでは、これは意図して変更する。
+非公開の先行実装は schema の `nonClassExportNames` と隣接 `.d.ts` により、keyframes、ICSS `@value`、`:export` 由来の key を扱う。公開版では、これは意図して変更する。
 
 - 安定した TypeScript API は BEM class だけとする。
-- ID、keyframes、`@value`、任意の ICSS `:export` key は、作り直しの plugin が提供する class API に含めない。
+- ID、keyframes、`@value`、任意の ICSS `:export` key は、公開版の plugin が提供する class API に含めない。
 - Vite や PostCSS の実装上の都合で非classの runtime key が残る場合があっても、利用者が依存できる互換契約とはしない。
-- 既存 v0.1 でそれらを参照している利用者は、作り直しへ移行する際に影響を受ける。この差分を隠すための別名生成や export map の複雑化は行わない。
+- 非公開の先行実装ではそれらを参照できたが、公開版の型/APIには含めない。この内部差分を埋めるための別名生成や export map の複雑化は行わない。
 
 ### 3.7 同名 keyframes の既定警告
 
@@ -124,7 +124,7 @@ styles.profileImageRounded; // "c-card__profileImage--rounded"
 
 ### 3.9 Vite への委譲境界
 
-作り直しの plugin が所有するのは、`@block` の所有判定、BEM class / ID / keyframes の構文ベースの変換、class API と keyframes 警告に必要な観測である。次の処理は Vite と、その設定された実装へ委譲する。
+公開版の plugin が所有するのは、`@block` の所有判定、BEM class / ID / keyframes の構文ベースの変換、class API と keyframes 警告に必要な観測である。次の処理は Vite と、その設定された実装へ委譲する。
 
 - `.module.scss` の Sass 展開。
 - PostCSS plugin 配列の実行。
@@ -154,11 +154,11 @@ styles.profileImageRounded; // "c-card__profileImage--rounded"
 - pluginは通常の更新をdocument全体のreloadへ強制しない。Viteまたはframeworkが持つHMR境界を維持する。
 - import中のsourceを削除してimport解決自体が失敗する場合は、通常更新のHMR保証から外す。型宣言とkeyframes台帳は削除するが、呼び出し側sourceの修正まではpluginが行わない。
 
-## 4. 現行 v0.1 との差分
+## 4. 非公開の先行実装との差分（内部設計記録）
 
-`SPEC.md` の現行契約を変更せず、作り直しでは次の差分を採用候補ではなく契約として扱う。
+以下は初回公開版の設計時に非公開の先行実装と比較した記録であり、公開済みバージョン間の変更履歴や利用者向け移行案内ではない。
 
-| 項目 | 現行 v0.1 | 作り直し |
+| 項目 | 非公開の先行実装 | 公開版 v0.1 |
 | --- | --- | --- |
 | BEM class | 最終 CSS は global 化するが、Project scope の Block / 生成 class uniqueness を検査する | hash や plugin suffix を使わず、ファイル間の衝突を既定で許容する |
 | ID / keyframes | local CSS Modules export として検証・型生成の対象になり得る | global 名として出力し、class API から除外する |
@@ -171,20 +171,20 @@ styles.profileImageRounded; // "c-card__profileImage--rounded"
 | HMR | schema差分に応じてscript importerを独自にinvalidateする | Vite標準HMRへ委譲し、plugin独自のCSS HMR runtimeを持たない |
 | Project一意性 | Block名と生成class名の重複をエラーにする | Project全体の一意性を要求しない |
 
-この差分をもって現行 v0.1 の利用者が自動移行できるとは判断しない。特に非class export と global 名の衝突は、明示的な移行確認を必要とする。
+非公開の先行実装との違いを、公開版の利用者に対する移行要件として扱わない。公開版で保証する範囲はこの仕様と利用ガイドに記載する。
 
-## 5. 製品実装前に決める項目
+## 5. 初回公開版のAPIと運用境界
 
-隔離試作で変換経路、型生成、警告台帳、HMRは成立した。製品実装では、次の判断を v0.2 初期 API として固定する。
+隔離試作で変換経路、型生成、警告台帳、HMRを確認した。初回公開版では、次の判断を v0.1 API として固定する。
 
-### 5.1 設定APIとv0.1からの移行
+### 5.1 設定APIと公開時の説明
 
-- `naming.wordCase`、`naming.elementSeparator`、`naming.modifierSeparator`、`modifierOutput`、`types`、`project` は v0.1 の名前を維持する。これらは既存設定の移行負担が小さく、Vite への委譲とも衝突しない。
+- `naming.wordCase`、`naming.elementSeparator`、`naming.modifierSeparator`、`modifierOutput`、`types`、`project` は先行実装の設定名を引き継ぐ。これらはViteへの委譲とも衝突しない。
 - `globalScope.exact` / `prefix` も互換設定として維持する。一致したclassはBEM分類を受けず、元の名前のままglobal化するが、互換APIとしてclass対応表とclass-onlyの隣接`.d.ts`には残る。これは明示的な`:global(...)`のclassをplugin APIへ追加することとは異なる。新規コードではCSS標準の`:global(...)`を推奨し、別名を追加してAPIを拡張しない。`root`は従来どおりBlockとして扱う。
 - Project-wide の一意性検査は廃止する。`project.include` / `exclude` は未import Moduleを含む明示的な `check` / `sync` の範囲指定として残す。Vite companionはbuildStartで全体走査せず、`project.startup`は設定互換のため受け付けるが全体同期を起動しない。
 - `bem-modules check` と `bem-modules sync` は残す。`check` は class 構文と設定の検査、`sync` は同じ範囲の class-only 隣接型の同期を担当し、keyframes の Vite 警告台帳を CLI の永続状態にはしない。
 - package root の公開 factory は既定 export `bemModules`、`createBemPostcssPlugin`、`defineBemModulesConfig` とする。Compiler / Project / keyframes registry は内部 API とし、実 consumer が現れるまで公開しない。
-- v0.1 からの移行案内では、ID・keyframes・`@value`・任意の ICSS `:export` key の型/APIが消えること、PostCSS plugin の明示登録が必要なこと、Project-wide 一意性検査がなくなることを破壊的差分として明記する。
+- 利用ガイドでは、初回公開版のAPIとしてPostCSS pluginの明示登録、class-onlyの型、Project-wide一意性検査を行わないことを説明する。非公開の先行実装との比較や移行手順は公開版の変更履歴に含めない。
 
 この判断は、既存設定をできるだけそのまま使えること、Sass・PostCSS・CSS Modules・HMRを Vite に委譲できること、そして公開面に低レベル状態を漏らさないことを優先したものである。
 
@@ -225,7 +225,8 @@ styles.profileImageRounded; // "c-card__profileImage--rounded"
 
 この契約は、次の文書、現行コード、隔離試作を根拠にする。
 
-- 現行v0.1契約: [`SPEC.md`](SPEC.md)
+- 公開版v0.1契約: この文書
+- 非公開の先行実装の記録: [`SPEC.md`](SPEC.md)
 - 作業状態と隔離試作の観測: [`PLANS.md`](PLANS.md)
 - 現行のBEM解析とselector lowering: [`src/schema.ts`](src/schema.ts)
 - 現行のVite hook、明示的PostCSS registration、HMR: [`src/index.ts`](src/index.ts)、[`src/runtime.ts`](src/runtime.ts)、[`src/postcss.ts`](src/postcss.ts)
@@ -234,4 +235,4 @@ styles.profileImageRounded; // "c-card__profileImage--rounded"
 
 隔離試作ではVite 8.2.1上で、Sass展開後のPostCSS AST変換、CSSとdefault importの一致、class-only隣接型、双方向keyframes台帳、明示同期、build、dev、実ブラウザHMRを確認した。HMR再診断では、動的specifierを使った検証entryのmodule再評価をdocument全体のreloadと誤認していたことを訂正し、literal specifierのdirect dependency acceptでdocumentとDOM identityを維持した更新を確認した。
 
-製品`src/`へv0.2経路を実装済みである。Vite 6 / 7、依存package、virtual Module、Windowsの実watcher、生成先にsymlinkがある場合のv0.2 writer、公開APIの移行方法、性能は未確認である。
+公開版v0.1の経路を製品`src/`へ実装済みである。Vite 6 / 7、依存package、virtual Module、Windowsの実watcher、生成先にsymlinkがある場合の型writer、実利用下の性能は未確認である。

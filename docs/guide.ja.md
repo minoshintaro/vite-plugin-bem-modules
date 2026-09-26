@@ -46,7 +46,7 @@ package rootは次のAPIを公開します。
 | `isBemGlobalClassName` | global classの一致判定を共有するhelper |
 | `BemGlobalScopeOptions`、`BemModulesOptions`、`BemNamingOptions`、`BemOutputSeparator`、`BemProjectOptions`、`BemProjectStartup`、`ModifierOutput`、`WordCase` | `naming`、`globalScope`、`modifierOutput`、`types`、`project`の設定 |
 
-生成される型の安定した公開面はclass keyだけです。ID、keyframes、`@value`、任意のICSS export keyはv0.2のTypeScript APIに含めません。
+生成される型の安定した公開面はclass keyだけです。ID、keyframes、`@value`、任意のICSS export keyはv0.1のTypeScript APIに含めません。
 
 ## Viteへの追加
 
@@ -261,7 +261,7 @@ export default defineConfig({
 
 Viteがserve中に処理した、または`types: true`でbuildした`@block`付きCSS Moduleには、`Card.module.css.d.ts`を生成します。宣言に含めるのはclass keyだけです。TypeScriptでは、安定したclass APIを補完でき、存在しないkeyを検出できます。
 
-生成された`.d.ts`はCSS Moduleの隣に置かれます。このファイルはCSSから作られる派生ファイルですが、v0.1では利用者のプロジェクトでコミットする運用を推奨します。コミットしておけば、clone直後でもエディタと`tsc`が公開キーの辞書を読めます。`.d.ts`は手編集せず、元のCSSを変更したときに再生成してください。
+生成された`.d.ts`はCSS Moduleの隣に置かれます。このファイルはCSSから作られる派生ファイルですが、利用者のプロジェクトでコミットする運用を推奨します。コミットしておけば、clone直後でもエディタと`tsc`が公開キーの辞書を読めます。`.d.ts`は手編集せず、元のCSSを変更したときに再生成してください。
 
 型宣言の同期では、Viteのdev serverを起動しない同梱CLIを主経路にします。CLIは同じProject scopeを収集し、全Moduleをside-effect importするvirtual entryを使って一回の`write: false` programmatic Vite buildを実行します。Sass、`additionalData`、alias、custom importer、PostCSSの順序、CSS Modules、worker lifecycleはViteへ委譲されます。CIで`.module.scss`を含むscopeを検査する場合は、Viteが利用できるSass実装（`sass-embedded`など）を依存に含めてください。
 
@@ -346,9 +346,9 @@ bemModules({
 });
 ```
 
-`project.include` / `project.exclude`は、importされていないModuleも含めた`check` / `sync`の明示範囲を決めます。CLIはこの範囲をvirtual entryからimportし、個別にSass compilerや`preprocessCSS`を呼びません。v0.2ではProject全体のBlock名・生成class名の一意性検査を行いません。
+`project.include` / `project.exclude`は、importされていないModuleも含めた`check` / `sync`の明示範囲を決めます。CLIはこの範囲をvirtual entryからimportし、個別にSass compilerや`preprocessCSS`を呼びません。v0.1ではProject全体のBlock名・生成class名の一意性検査を行いません。
 
-`project.startup`の`"scan"`と`"defer"`は設定互換のため受け付けますが、v0.2のVite pluginはどちらでも起動時のProject全体走査を開始しません。Viteから到達したCSS Moduleの変換と型同期は実処理経路で行い、未import Moduleを含む全体同期はCLIの明示操作へ委ねます。
+`project.startup`の`"scan"`と`"defer"`は設定互換のため受け付けますが、v0.1のVite pluginはどちらでも起動時のProject全体走査を開始しません。Viteから到達したCSS Moduleの変換と型同期は実処理経路で行い、未import Moduleを含む全体同期はCLIの明示操作へ委ねます。
 
 ```ts
 bemModules({

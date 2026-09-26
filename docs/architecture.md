@@ -1,10 +1,10 @@
 # アーキテクチャ（開発者向け）
 
-この文書は、実装を変更するときに「どの責任を、どの境界で確認するか」を示します。v0.2の受け入れ契約は[`REBUILD-SPEC.md`](../REBUILD-SPEC.md)、v0.1の保守契約は[`SPEC.md`](../SPEC.md)、利用方法は[`README.md`](../README.md)、作業の状態は[`PLANS.md`](../PLANS.md)が所有します。
+この文書は、実装を変更するときに「どの責任を、どの境界で確認するか」を示します。公開版v0.1の受け入れ契約は[`REBUILD-SPEC.md`](../REBUILD-SPEC.md)、公開前の先行実装の記録は[`SPEC.md`](../SPEC.md)、利用方法は[`README.md`](../README.md)、作業の状態は[`PLANS.md`](../PLANS.md)が所有します。
 
-## v0.2の責任分担
+## v0.1の責任分担
 
-v0.2では、BEMのAST変換を明示的に登録したPostCSS pluginへ委譲し、Vite pluginは型同期・設定検証・削除時の掃除を担うcompanionです。ViteがSass、PostCSS、CSS Modules、HMRを一度ずつ実行する経路を正本にします。
+v0.1では、BEMのAST変換を明示的に登録したPostCSS pluginへ委譲し、Vite pluginは型同期・設定検証・削除時の掃除を担うcompanionです。ViteがSass、PostCSS、CSS Modules、HMRを一度ずつ実行する経路を正本にします。
 
 ```text
 source
@@ -40,7 +40,7 @@ pluginは明示的に`css.postcss.plugins`へ登録される必要がありま�
 
 ## ProjectとCLI
 
-[`src/project.ts`](../src/project.ts)は、rootと明示された`project.include` / `project.exclude`からfilesystem上の対象集合を作ります。`include`省略はroot全体、`include: []`は空集合です。Projectは対象集合を走査してCompilerを呼び、Module内のBEM診断とclass mapを検査します。v0.2では、別Module間のBlock名・生成class名の一意性は要求しません。グローバルなBEM名の衝突はCSSのcascadeとkeyframes警告の責務です。
+[`src/project.ts`](../src/project.ts)は、rootと明示された`project.include` / `project.exclude`からfilesystem上の対象集合を作ります。`include`省略はroot全体、`include: []`は空集合です。Projectは対象集合を走査してCompilerを呼び、Module内のBEM診断とclass mapを検査します。v0.1では、別Module間のBlock名・生成class名の一意性は要求しません。グローバルなBEM名の衝突はCSSのcascadeとkeyframes警告の責務です。
 
 `check`は検査、`sync`は検査済みschemaと所有marker付きの隣接`.d.ts`の同期です。scope外のsourceや生成物はProjectが検査・削除しません。ProjectIndexの低レベルcompile/check/syncはruntimeのunlink処理と既存consumer用に残りますが、CLIの主経路では使用しません。CLIはViteが処理した管理対象schemaだけをcaptureし、`check`では型へ触れず、`sync`ではbuild成功後に全expected pathをpreflightしてから生成・孤立生成物削除を確定します。capture中のPostCSS pluginは、companionの設定hookとの実行順や`types`の値にかかわらず、型宣言を生成・更新・削除しません。CLIで型I/Oを行う場所は、成功した`sync`のreconcile処理だけです。
 

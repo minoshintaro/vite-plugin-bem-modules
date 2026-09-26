@@ -1,15 +1,19 @@
-# v0.2作り直し
+# 公開版0.1.0
 
 ## 現在の状態
 
-- 現行v0.1の保守起点は`maintenance/v0.1`に分離した。このbranchは`6ee6802f11fb3d76bb512226c14880e9c8354ec8`を指し、v0.1の公開準備と保守だけを扱う。
-- v0.2の製品実装は`feat/v0.2-rebuild`へ移植済み。package rootは`bemModules`、`createBemPostcssPlugin`、`defineBemModulesConfig`を公開し、Compiler / Project / registryは内部に留める。
-- `REBUILD-SPEC.md`をv0.2の契約として更新し、構文解析、class-only型生成、双方向keyframes台帳、明示同期、Vite標準HMRの隔離試作結果を反映した。
-- v0.1のnpm publish、tag、GitHub Releaseはこのbranchでは行わない。
+- 現在の製品実装を初回公開版`0.1.0`として扱う。公開前に内部で使っていた`0.2`という番号は公開版数ではなく、利用者向けの移行元やリリースノートには含めない。
+- `package.json`と`CHANGELOG.md`は公開版`0.1.0`に揃え、CHANGELOGは公開前の状態として`Unreleased`にする。
+- `REBUILD-SPEC.md`が公開版の契約を所有し、`SPEC.md`は公開前の先行実装に関する内部記録として残す。
+- 既存のローカル`v0.1.0` tagは`2b8bdd2`を指している。公開先に同じtagがあるか、公開版に使えるかは未確認なので、Release作成前に確認する。
 
 ## アクティブフェーズ
 
-`REBUILD-SPEC.md` Section 5 の判断を v0.2 初期 APIとして固定した。PostCSS pluginの明示登録を正本にし、Vite pluginは companion（設定検証、型同期、unlink処理、HMR境界）へ限定している。
+初回公開版としての利用案内と配布手順を整える。非公開の先行実装との比較や移行案内は公開文書に含めない。リリース前にはVite 8の対象範囲、Windows watcherの対応範囲、配布tarballを確認する。
+
+## 実装の経緯（内部記録）
+
+以下は公開前の開発経緯である。過去の`v0.1` / `v0.2`という表記は内部の作業ラベルであり、公開済みの版や利用者向けの移行履歴を示さない。
 
 2026-09-19の製品実装では、ASTベースのclass / ID / keyframes lowering、class-only隣接型、双方向keyframes registry、明示的なPostCSS登録検証、Project-wide衝突許容、Vite標準HMR境界を`src/`へ移した。serveでは未import Moduleを自動同期せず、Viteが処理したModuleだけをPostCSS経由で型同期し、全体同期はCLI / buildの責務とした。この判断は、実dev検証でserve起動時の全体走査が未import型を先に生成することを観測したためである。
 
@@ -35,11 +39,11 @@ bridge版の検証では、`CI=true /Users/minos/.agents/bin/agent-test -- npm t
 
 ## 今後のフェーズ
 
-1. Vite 6/7 matrixと、必要なversionでのブラウザHMRを、peer rangeを広げる前の確認として実行する。
-2. Windows watcherを含むCI環境で、直接hotUpdate以外のファイル監視経路を検証する。
-3. v0.1からの移行案内とv0.2のREADMEを、実際の公開手順に合わせて最終確認する。
+1. 公開版の対象はVite 8とする。peer rangeを広げる場合は、Vite 6 / 7のmatrixを追加で実行する。
+2. Windows watcherを含むCI環境で直接hotUpdate以外の監視経路を確認し、未確認の環境は対応範囲に明記する。
+3. 公開版v0.1の利用案内とGitHub Release向け配布物を最終確認する。非公開の先行実装からの移行手順は作らない。
 
-## 作り直しの設計前提（現行v0.1とは別）
+## 公開版の設計前提
 
 - BEMを選ぶ以上、生成するclass名はグローバルなCSS名として扱う。ハッシュやpluginによる一意化を必須にせず、別ファイルとの名前衝突を許容する。
 - IDとkeyframesもグローバル名として扱い、従来の非class exportを維持するためだけに変換を複雑化しない。同名keyframesは既定で警告するが、ビルドは止めない。警告は衝突の発見を助けるもので、衝突がないことの保証ではない。
@@ -50,7 +54,7 @@ bridge版の検証では、`CI=true /Users/minos/.agents/bin/agent-test -- npm t
 - IDとキーフレームの事前`:global`化も隔離試作した。同名の`.fade`・`#fade`・`@keyframes fade`を手書きでglobal指定した場合と、Sass mixin生成後にPostCSS pluginでID・keyframes・animation参照をglobal化した場合の両方で、Vite 8.2.1のbuildは名前生成フックをclassにだけ呼び、CSSとJS exportが一致した。後者はdevの`transformRequest`でも通った。ただし実験の自動ラップは固定名の文字列置換で、製品ではCSS/selector/valueの構文解析が必要。global化したID・keyframesは従来のlocal exportから消えるが、作り直しではその維持を必須条件にしない。製品には未採用。
 - 非class exportの比較（Vite 8.2.1、現行plugin、ハッシュなしの隔離build）: `@keyframes spin`を`:global(spin)`にすると生成CSSは同じでもJS importと隣接`.d.ts`から`spin`が消えた。衝突のない名前なら`:export { spin: spin }`で両方を保持できた。同名のclassとkeyframesでは、非classをglobal化するとclassの`fade` exportは保てるが、同じ`fade`キーでkeyframes値も公開することはできない。別名`:export { fadeAnimation: fade }`の試行は現行pluginの`BEM009`になり、この経路での別名維持は未確認。現行plugin自体も`@block`付きファイルのlocal ID、classと同名のlocal keyframes、Sass mixin生成のlocal ID/keyframesでは`BEM009`になる。作り直しではclassのTS APIを中心に据え、keyframes exportの互換維持だけを目的とする複雑化は避ける。
 - global keyframesのファイル間衝突（Vite 8.2.1の隔離build）: `p-card`と`p-modal`がそれぞれ異なる`@keyframes fade`を持つと、両classの`animation`参照は同じ`fade`になり、import順に従って2定義の出力順が入れ替わった。CSS Animations仕様では後の同名定義だけが使われる。別名の`slide`は`animation-name`と一致した。既定警告で観測するファイル集合とdev時の更新方法は未設計。ブラウザHMRと実際の表示は未検証。
-- PostCSS設定の採用方針（v0.2現行）: 利用者が`vite.config`の`plugins`に`bemModules(...)` companionを、`css.postcss.plugins`にBEM用PostCSS pluginと他に使うpluginを明示登録する。runtimeとCLIはどちらのpluginも自動挿入せず、解決済み設定に直接登録がなければ`BEM010`で停止する。外部`postcss.config.*`の探索・コピー・再構成・上書きは行わず、外部設定を使う場合もVite configへ両方の登録を置く。Vite 8.2.1の隔離buildでは手書き登録でCSSとexportが一致し、他のpluginとの実行順序も指定どおりだった。
+- PostCSS設定の採用方針（現行）: 利用者が`vite.config`の`plugins`に`bemModules(...)` companionを、`css.postcss.plugins`にBEM用PostCSS pluginと他に使うpluginを明示登録する。runtimeとCLIはどちらのpluginも自動挿入せず、解決済み設定に直接登録がなければ`BEM010`で停止する。外部`postcss.config.*`の探索・コピー・再構成・上書きは行わず、外部設定を使う場合もVite configへ両方の登録を置く。Vite 8.2.1の隔離buildでは手書き登録でCSSとexportが一致し、他のpluginとの実行順序も指定どおりだった。
 - 旧前提（無宣言ファイルは既定ハッシュを維持）での再設計案（未採用）: Vite 8の`css.modules.generateScopedName`はCSS Module全体に適用され、公開APIにはファイル単位で既定生成へ委譲する手段が見当たらない。既定ハッシュ計算のコピーは、`@block`のないファイルを通常のCSS Modulesとして扱う要件に対して脆い。さらに公開型は3引数だが、内部実装は第4引数にselector nodeを渡す場合がある。`.class`と`#id`は区別できる一方、`[class=…]`、宣言値の`:local(…)`、`@keyframes`はnodeなしで呼ばれるため、この引数だけではBEM対象のclassを漏れなく判定できない。名前生成フック単独を主経路と決めず、`@block`のあるファイルだけに介入する経路、同名ケース、PostCSS設定の共存を隔離試作で確認してから方式を選ぶ。
 - 隔離試作では、Sass展開後のPostCSS処理で`@block`付きファイルだけを書き換え、無宣言ファイルの既定ハッシュ、`:global`、Sass mixin由来のclassを確認した。PostCSS設定へ明示登録する方式はCJS・ESM両方で動いた。Vite pluginの`config`から`css.postcss`を伝搬することもでき、既存のインラインpluginsは設定マージで残る。一方、外部の`postcss.config.*`はインライン指定によって探索されなくなるため、一律のインライン指定は採用しない。Viteの実験的`preprocessCSS`を使う別経路はbuildできたが、CSSが二重にPostCSS処理され、Sass partial更新時にCSS側のmodule graphが自動で無効化されなかったため、主経路には選ばない。
 - 別案の隔離試作では、`config`でCSS Modulesの`getJSON`を登録し、Vite標準CSS変換の前後に通常のVite plugin transformを置いた。`getJSON`で得た実際のclass名をCSSとJS exportの両側でBEM名へ置換でき、外部の`postcss.config.*`は保持され、PostCSSは一回だけ実行された。無宣言ファイルは既定ハッシュのままで、Sass partial変更時のJS exportとCSSもVite標準の監視で更新された。ただし`getJSON`の引数変更は公開APIの保証がなく、後段でのJS export書き換えもVite生成形式に依存する。事前に同名の`:export`を追加してJS書き換えを避ける案も、Vite 8.2.1でSass mixin由来のclassを含むbuildを試すと、同名のclass exportが優先されてハッシュ値のままだった。`:export`を`@use`の後・末尾のどちらに置いても変わらず、別名のexportだけがBEM値を保持した。このため事前の`:export`だけではCSSと既存JS APIの一致を保証できない。採用前にselectorとexportの安定した変更点、既存`getJSON`との共存、ブラウザHMR、Vite version matrixを確認する。既定ハッシュ計算のコピーと外部PostCSS設定の再読み込みは前提にしない。
@@ -86,7 +90,7 @@ bridge版の検証では、`CI=true /Users/minos/.agents/bin/agent-test -- npm t
 - Compiler / Project低レベルAPIのpackage root公開は、実consumerが現れた場合に検討する。
 - GitHub ActionsがNode.js 20対象のactionをNode.js 24で強制実行している警告は、各actionの対応versionを確認してから更新する。
 
-## v0.1保守との境界
+## 公開版0.1.0のtagとRelease
 
-- v0.1のnpm publish、公開確認、tag、GitHub Releaseは`maintenance/v0.1`で扱う。
-- v0.2の試作や実装を理由に、v0.1のpackage、tag、公開成果物を変更しない。
+- ローカルの`v0.1.0` tagは先行実装のcommitを指す。GitHub側のtag有無は未確認であり、公開前に確認してからRelease tagを決める。
+- 公開版のGitHub Releaseと配布物は、初回公開版`0.1.0`として作成する。内部の作業ラベルを公開済みバージョンとして扱わない。
