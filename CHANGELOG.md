@@ -2,7 +2,7 @@
 
 このファイルには、利用者に影響する公開版の変更を記録します。公開前の内部試作の履歴は含めません。
 
-## 0.1.0 - Unreleased
+## 0.1.0 - 2026-09-26
 
 - Vite 8のCSS Modules向けに、`@block`宣言を持つModuleからBEM classと型を生成する。
 - `bemModules()`をVite pluginとして、`createBemPostcssPlugin()`を`css.postcss.plugins`へ明示登録する。

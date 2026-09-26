@@ -3,9 +3,10 @@
 ## 現在の状態
 
 - 現在の製品実装を初回公開版`0.1.0`として扱う。公開前に内部で使っていた`0.2`という番号は公開版数ではなく、利用者向けの移行元やリリースノートには含めない。
-- `package.json`と`CHANGELOG.md`は公開版`0.1.0`に揃え、CHANGELOGは公開前の状態として`Unreleased`にする。
+- `package.json`と`CHANGELOG.md`は公開版`0.1.0`に揃えた。
 - `REBUILD-SPEC.md`が公開版の契約を所有し、`SPEC.md`は公開前の先行実装に関する内部記録として残す。
-- ローカルとGitHubの`v0.1.0` tagは先行実装の`2b8bdd2`を指し、GitHubには公開済みReleaseと旧tarballがある。npm registryへは未公開。利用者の許可を得て、修正版の検証後にtagを付け替える。Release本文と添付物も新しい実装に揃える必要がある。
+- ローカルとGitHubの`v0.1.0` tag、公開済みRelease本文と添付tarballを修正版へ揃えた。npm registryへの公開は別工程として残る。
+- 公開前のCIではUbuntuのNode 22.13.0と24、WindowsとmacOSのNode 24が成功した。UbuntuのNode 24ではtarballを隔離consumerにインストールし、CLI、CSS・SCSS、型検査、Vite buildを確認した。
 
 ## アクティブフェーズ
 
@@ -95,5 +96,5 @@ bridge版の検証では、`CI=true /Users/minos/.agents/bin/agent-test -- npm t
 - 2026-09-26の公開前検証で、BEM解析をPostCSSの`OnceExit`へ移すと、Vite 8.2.1のCSS Modules処理が先にclassをhash化し、元のclass名をBEM003で解析できないことをbuildで観測した。`Once`を維持し、後段visitorが追加・改名するclassは0.1.0の非対応範囲とする。PostCSS plugin配列順だけでこの範囲を保証する説明はREADMEから外す。
 - Windows CIの一時ユーザーdirectoryでは、Viteが短縮パス`RUNNER~1`を解決に用いるケースがあり、直接dev requestのfixtureが不安定だった。該当fixtureはWindowsではcheckout上に作り、並行requestの失敗理由をテスト出力へ残す。
 
-- 2026-09-26にGitHub側の`v0.1.0` tagと公開済みReleaseを確認した。旧tarballは現在のAPIと一致しない。tag付け替えは利用者が許可済みで、修正コミットとCIの確定後に行う。
+- 2026-09-26にGitHub側の`v0.1.0` tagと公開済みReleaseを確認した。旧tarballは現在のAPIと一致しなかったため、利用者の許可を得てtag・Release本文・添付物を更新した。npm registryへは未公開。
 - 公開版のGitHub Releaseと配布物は、初回公開版`0.1.0`として作成する。内部の作業ラベルを公開済みバージョンとして扱わない。
