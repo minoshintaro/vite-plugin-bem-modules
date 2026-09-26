@@ -94,7 +94,7 @@ test("Compiler・ProjectはVite runtimeへ到達せず、CLIはprogrammatic buil
   }
   assert.ok(
     reachableViteImports(path.join(sourceRoot, "cli.ts"))
-      .some((entry) => entry.endsWith("src/cli.ts -> vite")),
+      .some((entry) => entry.endsWith(`${path.join("src", "cli.ts")} -> vite`)),
     "cli.ts must use Vite's programmatic build API",
   );
 });

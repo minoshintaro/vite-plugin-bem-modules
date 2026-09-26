@@ -37,6 +37,7 @@
     "check:typegen": "npm run typegen && npm run typecheck:example && node scripts/check-generated-types.mjs",
     "browser:hmr": "pnpm build && node scripts/browser-hmr-runner.mjs",
     "test": "tsc -p tsconfig.json && node scripts/run-tests.mjs",
+    "verify:package": "node scripts/verify-package.mjs",
     "prepack": "tsc -p tsconfig.json",
     "prepublishOnly": "npm test"
   },

@@ -67,7 +67,7 @@ export default defineConfig({
 });
 ```
 
-`createBemPostcssPlugin()` is required. Put other PostCSS plugins in the same array in the order you want them to run; this plugin does not reorder them. Here, `types: true` enables declaration generation during a build.
+`createBemPostcssPlugin()` is required. Put other PostCSS plugins in the same array. PostCSS visitor phases can run after this plugin analyzes the CSS even when another plugin appears earlier in the array; classes added or renamed in those phases are outside the supported scope. Here, `types: true` enables declaration generation during a build.
 
 ### 2. Declare the Block in a CSS Module
 
@@ -370,6 +370,7 @@ Ordinary CSS, CSS Modules under `node_modules`, and virtual CSS Modules without 
 - Sass `&--modifier`, selector interpolation, `@at-root`, and `@extend`
 - `css.transformer: "lightningcss"` for CSS Modules
 - Virtual CSS Modules without a real file path, such as framework-generated `<style module>`
+- Classes added or renamed by another PostCSS plugin after BEM analysis, including `Rule` and `AtRule` visitors
 
 Deleting an imported CSS Module makes its import fail to resolve. The plugin cleans up adjacent declarations and its internal state but does not change the importing source file.
 

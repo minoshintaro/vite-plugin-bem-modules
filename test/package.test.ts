@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -20,8 +19,6 @@ function testBemModules(options: Parameters<typeof bemModules>[0] = {}) {
     },
   ];
 }
-
-const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 test("package rootはfactory・共有判定・設定用型を公開し、source mapの参照元を配布する", async () => {
   const packageJson = JSON.parse(
@@ -70,29 +67,6 @@ test("package rootはfactory・共有判定・設定用型を公開し、source 
       const sourcePath = path.resolve(path.dirname(mapPath), map.sourceRoot ?? "", source);
       await assert.doesNotReject(fs.access(sourcePath), `${mapFile}: ${source}`);
     }
-  }
-});
-
-test("package tarballは実行可能なbem-modules CLIを含む", async () => {
-  const cliSource = await fs.readFile(path.join(repositoryRoot, "dist", "cli.js"), "utf8");
-  assert.match(cliSource, /^#!\/usr\/bin\/env node\n/);
-
-  const packageManagerCli = process.env.npm_execpath;
-  assert.ok(packageManagerCli, "run package tests through npm or the declared package manager");
-  const cache = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-package-cache-"));
-  try {
-    const listing = execFileSync(
-      process.execPath,
-      [packageManagerCli, "pack", "--dry-run", "--json"],
-      {
-        cwd: repositoryRoot,
-        encoding: "utf8",
-        env: { ...process.env, npm_config_cache: cache },
-      },
-    );
-    assert.match(listing, /dist[\\/]cli\.js/);
-  } finally {
-    await fs.rm(cache, { recursive: true, force: true });
   }
 });
 

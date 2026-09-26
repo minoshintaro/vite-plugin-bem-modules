@@ -5,7 +5,7 @@
 - 現在の製品実装を初回公開版`0.1.0`として扱う。公開前に内部で使っていた`0.2`という番号は公開版数ではなく、利用者向けの移行元やリリースノートには含めない。
 - `package.json`と`CHANGELOG.md`は公開版`0.1.0`に揃え、CHANGELOGは公開前の状態として`Unreleased`にする。
 - `REBUILD-SPEC.md`が公開版の契約を所有し、`SPEC.md`は公開前の先行実装に関する内部記録として残す。
-- 既存のローカル`v0.1.0` tagは`2b8bdd2`を指している。公開先に同じtagがあるか、公開版に使えるかは未確認なので、Release作成前に確認する。
+- ローカルとGitHubの`v0.1.0` tagは先行実装の`2b8bdd2`を指し、GitHubには公開済みReleaseと旧tarballがある。npm registryへは未公開。利用者の許可を得て、修正版の検証後にtagを付け替える。Release本文と添付物も新しい実装に揃える必要がある。
 
 ## アクティブフェーズ
 
@@ -92,5 +92,7 @@ bridge版の検証では、`CI=true /Users/minos/.agents/bin/agent-test -- npm t
 
 ## 公開版0.1.0のtagとRelease
 
-- ローカルの`v0.1.0` tagは先行実装のcommitを指す。GitHub側のtag有無は未確認であり、公開前に確認してからRelease tagを決める。
+- 2026-09-26の公開前検証で、BEM解析をPostCSSの`OnceExit`へ移すと、Vite 8.2.1のCSS Modules処理が先にclassをhash化し、元のclass名をBEM003で解析できないことをbuildで観測した。`Once`を維持し、後段visitorが追加・改名するclassは0.1.0の非対応範囲とする。PostCSS plugin配列順だけでこの範囲を保証する説明はREADMEから外す。
+
+- 2026-09-26にGitHub側の`v0.1.0` tagと公開済みReleaseを確認した。旧tarballは現在のAPIと一致しない。tag付け替えは利用者が許可済みで、修正コミットとCIの確定後に行う。
 - 公開版のGitHub Releaseと配布物は、初回公開版`0.1.0`として作成する。内部の作業ラベルを公開済みバージョンとして扱わない。

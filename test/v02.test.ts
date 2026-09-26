@@ -48,6 +48,44 @@ test("PostCSS factoryは管理対象のclass、ID、keyframes、animationを構�
   });
 });
 
+test("AtRule visitorが後から追加するclassは0.1.0の対応範囲外", async () => {
+  await withTempRoot(async (root) => {
+    const cssFile = path.join(root, "Card.module.css");
+    await fs.writeFile(cssFile, "/* @block p-card */\n@generate-badge;\n.root { color: red; }\n");
+    await fs.writeFile(path.join(root, "main.js"), "import styles from './Card.module.css'; export const rootClass = styles.root;\n");
+    const addBadgeClass = {
+      postcssPlugin: "test-add-badge-class",
+      AtRule: {
+        "generate-badge"(atRule: postcss.AtRule) {
+          const rule = postcss.rule({ selector: ".badge", source: atRule.source });
+          rule.append(postcss.decl({ prop: "color", value: "blue", source: atRule.source }));
+          atRule.replaceWith(rule);
+        },
+      },
+    };
+    await build({
+      root,
+      configFile: false,
+      logLevel: "silent",
+      plugins: [
+        ...bemModules({ types: true }),
+        {
+          name: "register-postcss-class-generator",
+          config: () => ({ css: { postcss: { plugins: [addBadgeClass, createBemPostcssPlugin({ types: true })] } } }),
+        },
+      ],
+      build: {
+        outDir: "dist",
+        emptyOutDir: true,
+        lib: { entry: "main.js", formats: ["es"], fileName: "index" },
+      },
+    });
+    const declaration = await fs.readFile(`${cssFile}.d.ts`, "utf8");
+    assert.match(declaration, /readonly "root": string/);
+    assert.doesNotMatch(declaration, /readonly "badge": string/);
+  });
+});
+
 test("追加した :export 宣言は元の CSS ファイルを source に持つ", async () => {
   await withTempRoot(async (root) => {
     const sourcePath = path.join(root, "Card.module.css");
@@ -109,6 +147,7 @@ test("path風virtualのresolved IDは通常importと共有しても処理順に�
     const sourcePath = path.join(root, "Generated.module.css");
     const virtualSpecifier = "virtual:shared-generated.module.css";
     const virtualId = sourcePath;
+    const directSpecifier = "./Generated.module.css";
     await fs.writeFile(sourcePath, "/* @block p-card */\n.root { color: red; }\n", "utf8");
 
     const buildAndRead = async (imports: string) => {
@@ -151,10 +190,10 @@ test("path風virtualのresolved IDは通常importと共有しても処理順に�
     };
 
     const virtualFirst = await buildAndRead(
-      `import virtualStyles from "${virtualSpecifier}"; import directStyles from "${sourcePath}";\n`,
+      `import virtualStyles from "${virtualSpecifier}"; import directStyles from "${directSpecifier}";\n`,
     );
     const normalFirst = await buildAndRead(
-      `import directStyles from "${sourcePath}"; import virtualStyles from "${virtualSpecifier}";\n`,
+      `import directStyles from "${directSpecifier}"; import virtualStyles from "${virtualSpecifier}";\n`,
     );
     for (const css of [virtualFirst, normalFirst]) {
       assert.doesNotMatch(css, /\.p-card\s*\{/);

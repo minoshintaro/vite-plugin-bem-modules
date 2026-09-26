@@ -56,6 +56,6 @@ jobs:
       - name: Run tests
         run: pnpm test
 
-      - name: Verify package contents
+      - name: Verify installed package
         if: matrix.release
-        run: pnpm pack --dry-run
+        run: pnpm run verify:package

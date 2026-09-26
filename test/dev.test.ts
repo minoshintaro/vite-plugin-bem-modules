@@ -63,7 +63,11 @@ function generatedDts(className: string): string {
 }
 
 test("Vite dev serverは未importModuleを自動同期せず、処理時にd.tsを生成する", async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bem-modules-dev-reconcile-"));
+  // Vite's Windows request resolver can shorten the user temp path (RUNNER~1)
+  // while the fixture was created through its long form. Keep this fixture on
+  // the checkout drive so the request and file-system paths agree.
+  const fixtureParent = process.platform === "win32" ? process.cwd() : os.tmpdir();
+  const root = await fs.mkdtemp(path.join(fixtureParent, "bem-modules-dev-reconcile-"));
   const cardCssFile = path.join(root, "Card.module.css");
   const buttonCssFile = path.join(root, "Button.module.css");
   const cardDtsFile = `${cardCssFile}.d.ts`;
