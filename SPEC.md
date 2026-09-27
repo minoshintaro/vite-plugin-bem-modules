@@ -1,206 +1,194 @@
-# 公開前の先行実装に対する受け入れ契約（内部記録）
+# v0.1.0 設計契約
 
-この仕様は初回公開前の先行実装に対する内部契約です。現在の公開版v0.1の契約は[`REBUILD-SPEC.md`](REBUILD-SPEC.md)が所有します。この文書は公開版の移行元や利用者向け仕様ではありません。利用方法は[`README.md`](README.md)、実装の所有者は[`docs/architecture.md`](docs/architecture.md)、作業の状態は[`PLANS.md`](PLANS.md)が案内します。
+この文書は、公開版 `vite-plugin-bem-modules` v0.1.0 の設計契約を定める。利用方法は [`README.md`](README.md) と [`README.ja.md`](README.ja.md)、実装の責任分担は [`docs/architecture.md`](docs/architecture.md)、未検証の範囲は [`PLANS.md`](PLANS.md) を参照する。
 
-## 中心となるデータフロー
+この契約は、class の TypeScript API と、BEM class・ID・keyframes をグローバルな CSS 名として扱うことを中心にする。依存関係やViteの処理はホスト基盤へ委譲する。
 
-一つのCSS Moduleから作る`BemModuleSchema`を正本とし、CSS・CSS Modules export・型宣言を同じschemaから投影します。`@block`のないCSS ModuleはCompilerの結果にならず、Vite標準の処理へ委譲します。
+## 1. 目的と適用範囲
 
-```mermaid
-flowchart TD
-  source[".module.css / .module.scss"] --> compiler["Compiler<br/>parse・検証・lowering"]
-  compiler -->|"@blockなし"| standard["Vite標準CSS Modules"]
-  compiler --> schema["BemModuleSchema"]
-  schema --> css["loweredSource<br/>selector map"]
-  schema --> exports["exportMap<br/>CSS Modules公開値"]
-  schema --> dts["隣接 .d.ts<br/>純粋なprojection"]
-  schema --> project["ProjectIndex<br/>明示されたsource scope"]
-  project --> check["check<br/>一意性検査"]
-  project --> sync["sync<br/>schema・d.ts同期"]
-  css --> vite["Vite Sass / PostCSS / CSS Modules"]
-  exports --> vite
-  vite --> observer["getJSON observer"]
-  observer --> verify["schemaと最終exportを照合"]
-  verify -->|"不一致"| bem009["BEM009"]
-  verify -->|"一致"| output["CSS asset + styles object"]
-```
+### 1.1 対象
 
-## 機能一覧
+- Vite が扱う `.module.css` と `.module.scss`。
+- TypeScript / JavaScript からの通常の CSS Module import。source transform は行わず、利用者は Vite の CSS Modules API を使う。
+- `/* @block <name> */` を持つ CSS Module の BEM class 変換。
+- Sass の展開、PostCSS の実行、CSS Modules の runtime object 生成、CSS asset の bundling は Vite に委譲する。
 
-| 領域 | 受け入れる機能 | 主な設定・境界 |
-| --- | --- | --- |
-| BEM変換 | `root`をBlock、その他のBaseをElement、separator付きclassをModifierとして分類する | `@block`が必要。ModifierにはBaseが必要 |
-| flat API | `styles.root`、`styles.rootCompact`のように通常のCSS Modules exportから参照する | JavaScript / TypeScriptのsource transformは行わない |
-| 命名 | `camel`／`kebab`、Element separator、Modifier separatorを選択する | `naming` |
-| Modifier export | Modifierだけ、またはBase併記の値を返す | `modifierOutput: "only"`／`"withBase"` |
-| Global class | BEM分類しないclassを元の名前で維持する | `globalScope.exact`／`prefix`、明示的`:global` |
-| Compiler | 一つのsourceからschemaとlowered sourceを副作用なく作る | `ResolvedBemCompilerOptions` |
-| Project | 明示されたsource集合のBlock名・生成class名を検査する | `project.include`／`project.exclude`／`project.startup` |
-| 型生成 | schemaの公開keyを隣接`.d.ts`へ出力する | `types`、`bem-modules sync` |
-| export検証 | Vite最終出力の欠落・不一致・未知の追加exportを検出する | `BEM009`、`getJSON` observer |
-| Vite委譲 | Sass、PostCSS、CSS Modules、CSS asset bundlingをViteへ任せる | Vite adapterとしてのみ利用 |
+公開版の主な出力は、変換後の CSS と、通常の CSS Modules import から得る class export である。class export の値は、ハッシュではなく生成された BEM class 名になる。
 
-## 公開APIと配布成果物
+### 1.2 対象外
 
-packageは一つのまま、rootから次を公開します。
+- JavaScript / TypeScript の import 文や component source の書き換え。
+- Sass compiler、PostCSS runner、CSS Modules 実装、module graph、asset bundler の代替実装。
+- class 以外の export を補完する互換層。
+- BEM class 名をプロジェクト全体で一意にするための hash、prefix、または Project-wide uniqueness check。
+- Vite 6 / 7への対応。初回公開版の対象は、現行`peerDependencies`と同じVite 8とする。
+- 依存packageやframework固有のvirtual CSS Moduleを、管理対象Moduleとして所有すること。
 
-- default export `bemModules`: Viteへ登録するplugin factory
-- `defineBemModulesConfig`: Vite configとCLIで同じ設定objectを共有するidentity helper
-- `isBemGlobalClassName`: global classの一致判定
-- `BemModulesOptions`、`BemProjectOptions`、`BemProjectStartup`、`BemNamingOptions`、`BemGlobalScopeOptions`、`BemOutputSeparator`、`ModifierOutput`、`WordCase`
+## 2. 用語
 
-`BemModuleSchema`とCompiler / Projectの低レベル実装は、実consumerが生まれるまでpackage rootの公開契約に含めません。内部では耐久境界として個別にテストします。
+- **管理対象 Module**: `@block` 宣言を持ち、公開版の BEM 変換へ入る CSS Module。
+- **通常 Module**: `@block` 宣言を持たず、BEM plugin の所有外にある CSS Module。
+- **class export API**: `import styles from "./Card.module.css"` で得る default styles object のうち、BEM class に対応する key と string value。公開版で安定性を保証する TypeScript API はこれである。
+- **グローバル名**: CSS Modules のファイル単位の hash や scope 変換を受けず、出力 CSS にそのまま現れる class、ID、keyframes の名前。
 
-source mapが参照する`src/`はtarballへ含めます。tarballの`bin.bem-modules`は実行可能な`dist/cli.js`を指し、次の二つのCLIを提供します。
+## 3. 確定した契約
 
-```sh
-bem-modules check
-bem-modules sync
-```
+### 3.1 Module の所有判定
 
-## Compiler契約
+1. 管理対象 Module は、CSS comment の `@block` 宣言を一つ持つ。Block 名は宣言された値を使い、ファイル名から推測しない。
+2. `@block` がない Module は通常 Module として Vite に委譲する。BEM の class 変換、BEM 用の export 書き換え、class-only型生成、keyframes警告の観測を適用しない。
+3. `@block` の解析は CSS / SCSS の構文として行う。文字列の固定置換だけで selector、宣言値、animation 名を変換する方式は製品経路に採用しない。
+4. 一つの Module に複数の `@block` がある場合は `BEM002` で拒否する。宣言がない場合は通常 Module として扱い、値が不正な場合は `BEM001` で拒否する。
+5. `BEM008`の所有検査は`raw` / `inline` / `url` queryを持つsource specifierだけを解決する。通常importの不要な解決は行わず、path形式の`virtual:` / `virtual/` specifierは既存の委譲境界を維持するために例外として扱う。
+6. path形式のvirtual specifierが実体path風のresolved IDへ解決された場合、そのresolved IDはsource provenanceに基づく恒久的な除外集合へ登録する。一回だけ消費するflagは使わず、同じIDを通常importが共有しても処理順に関係なく所有外とする。無効化中の登録は行わず、disabledからenabledへ戻る境界では通常の対象判定を再開する。
 
-Compilerはfilesystem、Vite、module graph、HMR、`.d.ts`書き込みを知りません。解決済みの命名・global scope・Modifier出力だけを受け取り、BEM対象なら次を返します。
+### 3.2 BEM class の名前
+
+管理対象 Module の local class は、次の意味で BEM class へ投影する。`root`、Element、Modifier の分類と設定された separator を使う。
+
+| source class | 出力 class の意味 |
+| --- | --- |
+| `.root` | Block 名そのもの |
+| `.element` | Block 名 + Element separator + `element` |
+| `.root--compact` | Block 名 + Modifier separator + `compact` |
+| `.element--large` | Block 名 + Element separator + `element` + Modifier separator + `large` |
+
+- Modifier は対応する Base class を必要とする。
+- `naming.wordCase`、`naming.elementSeparator`、`naming.modifierSeparator`、`modifierOutput` で名前とModifier exportの値を設定する。
+- 生成した BEM class は hash しない。plugin が class ごとに一意な suffix を付けることも必須にしない。
+- 別の Module が同じ Block 名または同じ生成 class 名を使っても、既定では衝突エラーにしない。これは CSS 名をグローバルに扱うための意図した契約である。衝突時の CSS の意味は、通常のグローバル CSS の cascade に従う。
+
+### 3.3 class の TypeScript import API
+
+次の API を class の安定した公開面とする。
 
 ```ts
-compileBemModule({
-  filePath,
-  source,
-  options,
-}): {
-  schema: BemModuleSchema;
-  loweredSource: string;
-} | null
+import styles from "./Card.module.css";
+
+styles.root; // "c-card"
+styles.rootCompact; // "c-card--compact"
+styles.profileImage; // "c-card__profileImage"
+styles.profileImageRounded; // "c-card__profileImage--rounded"
 ```
 
-`filePath`には、呼び出し側でcanonicalizeしたabsolute filesystem pathを渡します。ファイル名の`?`をqueryとして解釈しません。Viteのmodule idからqueryを除く処理はVite adapterが担当し、相対pathはCompilerの内部契約の対象外です。
+- runtime の styles object に存在する key だけを、TypeScript で参照できる class key として宣言する。型生成時にこの対応を保てない Vite 設定は config 解決時に拒否する。
+- source の Modifier key は、CSS Modules の key 変換規則に従って flat API へ投影する。例では `root--compact` を `rootCompact` として参照できる。
+- 型を生成する間、`css.modules.localsConvention` は省略時のVite既定値、`"camelCase"`、`"dashes"`をサポートする。`"camelCaseOnly"`、`"dashesOnly"`、関数形式は元のclass keyをruntime objectから除く場合があるため、`BEM004`で拒否する。`types: false`で型を生成しない場合、この型整合検査は行わない。
+- class export の値は、`modifierOutput` の設定に応じて Modifier だけ、または Base と Modifier の組み合わせになる。生成 class 自体は常にグローバル名である。
+- plugin は TypeScript / JavaScript source を書き換えない。default styles object の生成と import 解決は Vite の CSS Modules に任せる。
+- named CSS export、class 以外の値の型、framework 固有の virtual CSS Module の型は、この class API の保証に含めない。
 
-`schema`が意味の正本です。`classMap`はselector lowering、`exportMap`はCSS Modules公開値、`classMap`と`nonClassExportNames`はflat APIと`.d.ts`のprojectionに使います。Compilerの結果は同じ入力に対して同じ結果になり、Project stateやfilesystemを変更しません。
+### 3.4 `:global` class
 
-次の既存契約を維持します。
+- `globalScope.exact` / `prefix`に一致するclassは、BEMのBase / Element / Modifierとして分類しないが、pluginのclass対応表とclass-onlyの隣接`.d.ts`には元のkeyで残す。出力名は入力名のままglobal化する。
+- source に明示した `:global(.utility)`、および `:global` の scope 内にある class は、BEM class として分類・改名しない。
+- `:global` class は入力の global 名を保ち、BEM の Block / Element / Modifier uniqueness の対象から外す。
+- `globalScope`による分類と明示的な`:global`は同じ機能ではない。後者はpluginのclass APIへ追加しない。
+- `:global` class の runtime export の有無と key の形は、Vite の CSS Modules 設定に従う。plugin は global class を local BEM class として styles object へ追加しない。
+- `:global` の scope 外にある local class は、管理対象 Module である限り BEM class として扱う。`root` は `:global` によって意図的に除外されない限り Block になる。
 
-- `@block`がないModuleは`null`となり、Viteへ委譲する。
-- `classMap`と`exportMap`を分ける。`modifierOutput: "withBase"`では両者の値が異なる。
-- Sassの動的selector、`&--modifier`、selector内の`#{...}`、`@at-root`は、意味を確定できないため`BEM005`でfail closedする。
-- Sassの`@extend`によるselector継承は対応しない。Compilerへ渡すsource内の`@extend`は、`!optional`やplaceholderを対象にするものも`BEM005`で拒否する。外部partialやmixinの内部までは検査しないため、それらを経由する`@extend`も使用対象外とする。宣言の共有にはselector継承を行わないmixinを使う。
-- CSS Modulesの`composes`は`BEM007`で拒否する。
+### 3.5 ID と keyframes
 
-## Project契約
+- ID はグローバル名として扱う。`#dialog` を CSS Modules の local ID として hash しない。
+- `@keyframes fade` と vendor prefix 付きの同等な keyframes はグローバル名として扱う。keyframes 名と `animation` / `animation-name` の参照は同じ global 名を使う。
+- ID と keyframes の名前は、別ファイルとの衝突を許容する。plugin は hash、ファイル名 suffix、Block 名 prefix によって自動的に分離しない。
+- ID と keyframes は class export API ではない。local CSS Modules の非class exportを再現する目的で `:export` の alias を自動生成しない。
 
-ProjectはViteのmodule graphではなく、filesystem上の明示された対象集合を所有します。集合は`root`と`project.include`から作り、`project.exclude`を差し引きます。
+### 3.6 非class export の境界
 
-### 対象path
+- 安定した TypeScript API は BEM class だけとする。
+- ID、keyframes、`@value`、任意の ICSS `:export` key は、公開版の plugin が提供する class API に含めない。
+- Vite や PostCSS の実装上の都合で非classの runtime key が残る場合があっても、利用者が依存できる互換契約とはしない。
 
-- `project.include`と`project.exclude`はglobではなく、root相対または絶対のfile / directory pathです。
-- `include`を省略した場合はroot全体（`["."]`）を対象にします。
-- `include: []`は空集合を意味します。暗黙の既定値へ戻りません。
-- root外は暗黙importでは対象になりません。対象にする場合は絶対path（またはrootから解決できる明示path）を`include`へ追加します。
-- 同じscopeはCSS Moduleと隣接`.d.ts`の走査、個別compileによるProject更新、削除に適用します。scope外のsourceや`.d.ts`はProjectの一意性検査・型同期の対象にしません。
-- include配下の`node_modules`、`.git`、`dist`など既知の依存・生成・cache directoryはscope外です。ViteでimportしてもProjectへ登録しません。必要なfile / directoryを`include`で明示すると、そのpathを起点に対象へ含められますが、配下の無視directoryまで一括で解除はしません。
-- rootや明示includeのsymlinkは実体pathへ正規化します。directoryの再帰走査ではsymlinkを辿りません。
+### 3.7 同名 keyframes の既定警告
 
-### 検査と同期
+- 同じ名前の global keyframes が複数の入力から検出された場合、既定で警告する。
+- 警告は衝突の発見を助ける情報であり、build を失敗させない。名前の変更、hash、定義の自動統合は行わない。
+- 警告がないことは、プロジェクト内に衝突がないことの保証ではない。検出できる入力集合と Vite の処理順序の範囲に限って観測する。
+- 最終 CSS では通常の CSS Animations の規則に従い、同名定義が実際にどの定義を使うかは CSS の出力順に依存する。plugin はその意味を独自に変更しない。
 
-`check`は対象集合を全走査してCompilerを実行し、Block名と生成BEM class名の一意性を検査します。importされているかどうかは結果を変えません。`sync`は同じ検査を通したschemaから隣接`.d.ts`を生成し、scope内のplugin-ownedな孤立生成物を掃除します。
+警告台帳は、Viteが実際に処理した管理対象Moduleを観測する。通常Module、依存package、virtual Moduleは検出集合へ含めない。同じfileを再処理するときは、そのfileの旧keyframes集合を現在の集合で置き換える。sourceの削除または`@block`の削除では、そのfileの登録を撤回する。
 
-Project stateはProject自身が持ちます。個別compile・削除・全走査が並行して呼ばれても、一意性検証と状態更新を途中で交差させません。失敗した個別compileの後始末も、その次の更新より先に終えます。Vite adapterがmodule graphの変化でschemaを追加・削除したり、到達性を一意性や型生成の条件にしたりしません。
+台帳はfileから現在のkeyframes集合を引く索引と、keyframes名から現在のfile集合を引く索引を持つ。同じfile内の同名定義は一件として扱い、複数fileに同名がある間だけ警告する。衝突が解消した後に古いfileを指す警告を残さない。複数fileを順番に保存する途中では、一時的な衝突を現在の状態として警告することがある。
 
-## Vite Adapter契約
+### 3.8 PostCSS の手書き登録
 
-Vite adapterの責務は次の範囲です。
+- CSS Modulesを有効にして使う場合、利用者が `vite.config` の `css.postcss.plugins` に BEM 用 PostCSS plugin を一つだけ明示的に登録する。同じインスタンスの重複を含め、複数登録は `BEM010` で拒否する。`css.modules: false`では未登録を許容する。
+- 利用者が同時に使う他の PostCSS plugin も同じ配列へ明示する。PostCSSのvisitor種別も実行順に影響する。BEM pluginの `Once` より後でclassを追加・改名する変換は対象外とする。
+- Vite plugin は BEM 用 PostCSS plugin を自動挿入しない。自動挿入による二重実行や、利用者の PostCSS 構成を暗黙に置き換える動作は契約に含めない。
+- Vite の設定解決時に BEM 用 plugin の登録を確認し、登録がない場合は起動時に失敗させる。警告だけで処理を続けない。
+- `css.postcss` の inline 設定を使うと、Vite は外部 `postcss.config.*` の探索結果を使わない。inline 設定を選んだ利用者は、必要な外部 plugin も `css.postcss.plugins` へ移して明示する。
 
-- 実体のあるCSS Moduleか、node_modules・virtual module・query境界の所有判定を行う。
-- Compilerを呼び、`loweredSource`をViteへ返す。
-- `getJSON`でVite最終exportとschemaの`exportMap`を照合する。
-- Projectへの任意の`check` / `sync`起動をbuildやserveの契約へ接続する。
-- CSS Module自身の変更時に再compileし、schema projectionが変わったときだけ必要なscript importerをinvalidateする。
+### 3.9 Vite への委譲境界
 
-`@block`のないCSS Module、virtual module、`node_modules`配下、通常CSS Moduleへの`?raw` / `?inline` / `?url`はVite標準処理へ委譲します。BEM対象に同じqueryが付いた場合は`BEM008`で拒否します。`css.modules: false`では変換・query検査・Projectの検査と型同期を無効にし、Vite自身の制約をそのまま適用します。CSS Modulesの変換に`css.transformer: "lightningcss"`を使う構成は`BEM011`で拒否します。Viteの`build.cssMinify: "lightningcss"`によるビルド時のCSS圧縮は利用できます。
+公開版の plugin が所有するのは、`@block` の所有判定、BEM class / ID / keyframes の構文ベースの変換、class API と keyframes 警告に必要な観測である。次の処理は Vite と、その設定された実装へ委譲する。
 
-`project.startup`の既定値`"scan"`では、Viteの`buildStart`で明示scope全体をcheckまたはsyncします。`"defer"`ではこの起動時操作だけを行わず、到達したModuleのtransform・HMR・Project増分更新は維持します。CLIの`check` / `sync`は明示操作なので、このVite起動設定には従いません。
+- `.module.scss` の Sass 展開。
+- PostCSS plugin 配列の実行。
+- CSS Modules の local / global scope と runtime styles object の生成。
+- CSS asset の bundling、module graph、importer の invalidation。
+- TypeScript / JavaScript の import 解決と source transform。
 
-Viteの標準graph処理を優先し、HMRは正当性を保つ最小限の処理に留めます。importerが変更されただけでProject stateや生成`.d.ts`を変えません。CSSの再解析・同期に失敗した場合は旧schemaとplugin-owned生成物を残さず、エラーを再throwします。
+ホスト基盤が所有する処理をplugin側で再実装しない。Viteの公開委譲経路で必要な処理を実現できない場合は、private APIや独自互換実装へ逃げず、未対応の境界として停止し、必要な公開APIまたは設計変更を選択肢として報告する。
 
-## `.d.ts`のライフサイクル
+したがって、設計上の基本経路は「Sass を Vite で処理した後、手書き登録した PostCSS plugin で CSS 構文を変換し、その結果を Vite の CSS Modules に渡す」経路である。Vite の CSS transformer や `css.modules` の互換範囲を独自に再実装しない。
 
-`.d.ts`はschemaから作る派生物です。Viteの到達性ではなく、sourceとProject scopeを基準に扱います。
+### 3.10 隣接型宣言
 
-| 実行条件 | Projectのd.ts mode | 動作 |
-| --- | --- | --- |
-| serve、または`types: true` | `generate` | 対象scopeのBEM Moduleを生成・更新し、scope内の孤立plugin-owned生成物を削除 |
-| buildで`types`省略 | `ignore` | 生成・削除しない |
-| `types: false` | `remove` | 対象scopeのplugin-owned生成物を削除 |
-| `bem-modules check` | `ignore` | 検査のみ |
-| `bem-modules sync` | `generate` | 全対象を検査して生成物を同期 |
+- 管理対象Moduleの隣接`*.module.css.d.ts`または`*.module.scss.d.ts`を、runtime exportと同じclass対応表から生成する。buildの`types: true`では PostCSS 処理中の書き込みを保留し、Vite の公開 `closeBundle` hook で反映する。成功時は`build.write: false`でも型宣言を生成する。`buildEnd`または`renderError`へ届く失敗では保留内容を破棄する。CSS Modulesの変換失敗では既存宣言が以前の内容のままになることを検証済み。Viteのprogrammatic buildは後続`writeBundle` hookの失敗を`closeBundle`へ渡さないため、その失敗時はbuild自体がrejectしても型宣言が更新済みの場合がある。この境界より後の失敗に対する型宣言保持は保証しない。反映前に全書き込み先の所有権を確認し、`BEM006`ではどの宣言も変更しない。確認後の複数file更新は、OSのI/O障害まで含むtransactionではない。devではViteのPostCSS処理が成功した時点で更新する。
+- 型宣言に含めるのはclass keyだけとする。ID、keyframes、`@value`、任意の`:export` key、明示的な`:global` classは含めない。`globalScope`に一致したlocal classは元のkeyで含める。
+- 生成物にはplugin所有markerを付ける。markerのない手書きfileとsymlinkは上書き・削除しない。
+- 生成内容が変わらない場合はfileを書き換えない。
+- Viteが処理した管理対象Moduleはdev中に生成・更新する。sourceの削除または`@block`の削除では、plugin所有の型宣言を削除する。
+- importされなくなっただけでは通常の生成modeで削除しない。未import Moduleを含む全体同期と孤立生成物の内容を再計算する掃除は、明示的な同期コマンドの責務とする。`types: false`のbuildだけは、解析なしでscope内のplugin所有宣言を一括削除する。
+- SCSSの型生成は、Viteの実際のSass / PostCSS pipelineを通ったclass対応表を使う。source SCSSだけを独自解析してmixin由来classを推測しない。buildStartから別のSCSS前処理を呼び出して同じModuleを二重処理しない。
+- standalone CLIは対象scopeの全Moduleをside-effect importするvirtual entryを作り、Viteのprogrammatic buildを`write: false`で一度だけ実行する。SCSSのclass対応表はそのSass → PostCSS → CSS Modules pipelineからcaptureし、CLIがSass compiler、Viteの公開`preprocessCSS`、private API、独自worker lifecycleを呼び出してはならない。capture中は`types`の値やVite plugin hookの実行順にかかわらず、PostCSS pluginから隣接型を生成・更新・削除しない。`check`は型I/Oを行わず、`sync`はbuildと全出力の所有確認に成功した後のreconcile処理だけが型I/Oを行う。CIでSCSSを検査する場合はViteが利用できるSass実装を依存へ用意する。
 
-次の明示的な変化で生成物を削除します。
+### 3.11 dev更新とHMR
 
-- source CSS Moduleが削除された。
-- `@block`がなくなった。
-- `sync`がscope内のplugin-owned孤立生成物と判定した。
-- `types: false`で削除modeになった。
+- CSS Moduleの更新配信、module graph、importerの更新はVite標準HMRへ委譲する。plugin独自のCSS HMR runtimeを実装しない。
+- classの追加・削除・改名、CSS宣言値、Sass partial、keyframes名・内容の変更後も、CSS、default styles object、DOMで使うclass値を同じ変換結果へ更新できなければならない。
+- pluginは通常の更新をdocument全体のreloadへ強制しない。Viteまたはframeworkが持つHMR境界を維持する。
+- import中のsourceを削除してimport解決自体が失敗する場合は、通常更新のHMR保証から外す。型宣言とkeyframes台帳は削除するが、呼び出し側sourceの修正まではpluginが行わない。
+## 4. APIと運用境界
 
-importされなくなった、またはVite module graphから到達できなくなっただけでは削除しません。既存`.d.ts`の更新・削除は、生成markerを持つ通常fileだけを対象にします。手書きfileやsymlink（リンク切れを含む）が生成先にある場合は`BEM006`で停止し、掃除では触れません。symlinkを根拠に参照先へ型生成の所有を広げません。
-Projectのinclude / excludeを変更してscope外になった生成物も、安全のため自動削除しません。scope変更前の設定で`sync`またはremove modeを一度実行してから設定を変更してください。
+### 4.1 設定API
 
-## 命名と出力
+- `naming.wordCase`、`naming.elementSeparator`、`naming.modifierSeparator`、`modifierOutput`、`types`、`project` を公開設定とする。
+- `globalScope.exact` / `prefix` も公開設定とする。一致したclassはBEM分類を受けず、元の名前のままglobal化するが、class対応表とclass-onlyの隣接`.d.ts`には残る。これは明示的な`:global(...)`のclassをplugin APIへ追加することとは異なる。新規コードではCSS標準の`:global(...)`を推奨し、別名を追加してAPIを拡張しない。`root`はBlockとして扱う。
+- Project-wide の一意性検査は行わない。`project.include` / `exclude` は未import Moduleを含む明示的な `check` / `sync` の範囲指定として残す。Vite companionはbuildStartで全体走査せず、`project.startup`は設定互換のため受け付けるが全体同期を起動しない。
+- `bem-modules check` と `bem-modules sync` を提供する。`check` は class 構文と設定の検査、`sync` は同じ範囲の class-only 隣接型の同期を担当し、keyframes の Vite 警告台帳を CLI の永続状態にはしない。
+- package root は既定 export `bemModules`、`createBemPostcssPlugin`、`defineBemModulesConfig`、`isBemGlobalClassName` と公開型を提供する。Compiler / Project / keyframes registry は内部 API とする。
 
-- `wordCase: "camel"`ではflat keyをcamelCaseにし、既定のModifier separatorは`--`です。
-- `wordCase: "kebab"`ではflat keyをcamelCaseへ投影し、Modifier separatorに`-`は指定できません。
-- `elementSeparator`と`modifierSeparator`は`-`、`--`、`_`、`__`のいずれかで、同じ値にはできません。
-- `root`はBlockそのものを表す予約語です。`globalScope`に一致してもBlockとして扱います。
-- `modifierOutput: "only"`はModifierだけ、`"withBase"`は対応するBaseとModifierをexportします。
-- `globalScope.exact`は完全一致、`prefix`は接頭辞一致でBEM分類を除外します。除外したclassは入力名のまま扱い、CSS escapeが必要な名前でもselectorとexportの同一性を保ちます。
-- Project scope内の生成BEM class名とBlock名は一意でなければなりません。global classはその検査から除外します。
+### 4.2 観測範囲
 
-## CLIのshared config
+- keyframes警告は、Viteが処理した管理対象Moduleだけを観測する。依存package、通常Module、virtual Moduleまで広げる場合は、file identityと削除契約を別に定める。
+- buildごとの台帳はそのbuildで処理した入力から作る。dev台帳はfileの再処理とunlinkで更新する。buildをまたいだ永続状態は持たない。
+- 未import Moduleの型同期はCLIの明示scopeに限定する。生成物と依存directoryは既定で走査対象から除外し、明示的に指定したinclude pathとその配下には別途scope規則を適用する。
+- 複数fileを順番に保存する途中の一時的なkeyframes衝突を抑止するかは、実利用で問題が確認された場合に検討する。警告を原子的な複数file更新の保証にはしない。
 
-CLIはrootの`bem-modules.config.mjs`、次に`bem-modules.config.js`を読みます。`--config`で別pathを指定できます。Vite config側も同じobjectを`bemModules(config)`へ渡してください。これによりnaming、globalScope、modifierOutput、project scopeがCLIとViteで分岐しません。
+### 4.3 Vite設定との共存
 
-```js
-// bem-modules.config.mjs
-export default {
-  naming: { wordCase: "kebab" },
-  project: {
-    include: ["src"],
-    exclude: ["src/fixtures"],
-  },
-  types: true,
-};
-```
+- `css.modules.generateScopedName` は管理対象 ModuleのBEM class名には適用しない。管理対象ではpluginがglobal化したclass名と生成した`:export`の値を使う。通常 Moduleへの Vite 標準設定は変更しない。
+- `localsConvention` と `exportGlobals` は Vite に委譲する。型生成中に対応する `localsConvention` は省略時の既定値、`"camelCase"`、`"dashes"`に限る。元のsource keyを除く設定や関数形式は型の保証と両立しないため、`BEM004`で拒否する。追加aliasやglobal classのruntime exportは、引き続きVite設定の結果として扱う。
+- 登録検出は、`createBemPostcssPlugin()`が返す marker付き PostCSS pluginを、解決済み `css.postcss.plugins` の配列から探す。配列の wrapperを暗黙に展開したり、他の関数を実行して推測したりしない。runtimeではCSS Modulesが有効なとき登録が一つ必要で、複数登録は無効時も含め`BEM010`で停止する。CLIはこれに加えて、解決済みVite plugin一覧に互換protocol markerを持つ`bemModules()` companionが登録されていることも必要とする。plugin名の文字列だけではcompanionと判定しない。Vite configなし、companionなし、非互換protocol、外部PostCSS設定だけ、PostCSS側の間接登録、または複数登録の場合は`BEM010`で停止する。外部PostCSS設定の探索・コピー・再構成・上書きは行わない。
+- runtimeとCLIは`css.postcss.plugins`の順序をそのまま使用する。runtime側・CLI側ともBEM pluginの自動挿入、配列の再構成、外部設定の再読み込みは行わない。
+- Viteの default PostCSS transformerだけを初期対象とし、`css.transformer: "lightningcss"` は `BEM011` で明示的に対象外とする。
+- build / devではViteの実CSS pipelineだけをSass、PostCSS、CSS Modules、型projectionへ使う。呼び出し側がworker lifecycleを閉じられないVite公開APIをbuildStartやlibrary runtimeから直接起動しない。
+- `bemModules()`と`createBemPostcssPlugin()`を同じVite設定へ登録する標準構成では、CSS Modulesが有効なときにBEM PostCSS pluginを一度だけ実行する。config解決時に複数登録を`BEM010`で拒否する。`types: true`のbuildではPostCSS中に型を保留し、Viteの公開`closeBundle`で反映するため、`build.write: false`でも型を同期する。`buildEnd`または`renderError`へ届く失敗では保留型を破棄するが、後続`writeBundle` hookの失敗は`closeBundle`へ伝わらず、型反映後にbuildが失敗する場合がある。この後段failure時の保持は保証しない。`css.modules: false`ではBEM変換、capture、Project検査、型同期を無効にし、PostCSS factory単体の`enabled`既定値`true`は変更しない。
 
-```js
-// vite.config.mjs
-import { defineConfig } from "vite";
-import bemModules, { defineBemModulesConfig } from "vite-plugin-bem-modules";
-import config from "./bem-modules.config.mjs";
+## 5. 回帰検証の条件
 
-const bemConfig = defineBemModulesConfig(config);
-export default defineConfig({ plugins: [bemModules(bemConfig)] });
-```
+次の挙動を変更するときは、該当する自動テストまたは実ブラウザ検証で確認する。
 
-CLI options `--include` / `--exclude`は、shared configのpath scopeを明示的に上書きします。
-
-## 非対応と診断
-
-- CSS Modulesの`composes`は対応しません。
-- BEM対象のselectorは静的class名で記述します。Sassの動的selectorは`BEM005`で拒否します。
-- Sass partialやmixinがschema外のlocal classを出力した場合は、最終export検証の`BEM009`になります。
-- `css.modules.localsConvention`でBEM APIのsource keyを削る設定は`BEM009`で拒否します。aliasを追加する設定は利用できます。
-- framework pluginが生成するSFC内の`<style module>`など、実体pathを持たないvirtual CSS Moduleは所有外です。
-
-| コード | 内容 |
-| --- | --- |
-| `BEM001` | `@block`コメントのBlock名が空、または不正 |
-| `BEM002` | 1つのCSS Moduleに`@block`が複数ある |
-| `BEM003` | class名、Modifier、Block、生成class名の規則違反または衝突 |
-| `BEM004` | 設定値またはCSS transformerが対応範囲外 |
-| `BEM005` | Sassの動的selectorまたは非対応の`@extend`を検出 |
-| `BEM006` | 隣接`.d.ts`がplugin-ownedではない |
-| `BEM007` | CSS Modulesの`composes`が使われている |
-| `BEM008` | BEM対象に`?raw` / `?inline` / `?url`が付いている |
-| `BEM009` | Viteの最終CSS Module exportがschemaと一致しない |
-
-## 保留
-
-layer単位のCSSファイル生成、layerの出力制御、framework固有virtual moduleの型生成は、この契約には含めません。
+1. CSSとSCSSの管理対象Moduleで、`root`、Element、Modifier、Sass mixin由来classが同じglobal BEM classとclass export APIになること。
+2. TypeScriptのdefault importと隣接`.d.ts`が、同じclass keyだけを公開すること。`modifierOutput`、`wordCase`、separator設定も含める。
+3. `@block`なしのCSS / SCSS Moduleと明示的な`:global` classを、BEM変換とclass-only型生成の対象にしないこと。
+4. ID、`@keyframes`、vendor prefix付きkeyframes、`animation` / `animation-name`の参照を、構文の境界を越えて誤変換しないこと。
+5. 同名keyframesが複数の管理対象Moduleにある場合、警告を出しつつbuildを成功させ、変更・改名・削除後に古い登録と警告を残さないこと。
+6. `vite.config`の`css.postcss.plugins`へ手書き登録した場合だけ動作し、未登録時に起動時エラーになること。他のPostCSS pluginとの相互作用を確認すること。
+7. Sass、PostCSS、CSS Modules、asset bundlingをViteへ委譲し、同じPostCSS pluginを二重実行しないこと。SCSSのbuild / dev型同期は実Vite pipelineだけを使い、独自Sass compilerやbuildStartからの別`preprocessCSS`経路を持たないこと。
+8. dev serverでclassの追加・削除・改名、CSS宣言値、Sass partial、keyframes名・内容の変更を、document全体のreloadへ強制せずCSSとdefault importへ反映すること。
+9. source unlink、`@block`削除、手書きまたはsymlinkの`.d.ts`保護、内容不変時の書き込み抑止、未import Moduleの明示同期を確認すること。
+10. 対象のVite 8でbuild、dev、ブラウザHMRを確認すること。Vite 6 / 7はpeer rangeへ追加する場合に別途matrixを実行する。
+11. programmatic Vite buildとtest runnerが自然終了し、worker lifecycle leakを`process.exit`または`--test-force-exit`で隠さないこと。

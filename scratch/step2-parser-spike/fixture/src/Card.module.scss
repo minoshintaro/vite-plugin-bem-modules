@@ -1,8 +1,0 @@
-/* @block p-card */
-@use "./mixins" as mixins;
-
-.root {
-  border: 1px solid black;
-}
-
-@include mixins.card-parts;

@@ -41,10 +41,12 @@ CSS Modulesの変換器に`css.transformer: "lightningcss"`を指定した構成
 
 ## インストール
 
+当面は[GitHub Release v0.1.0](https://github.com/minoshintaro/vite-plugin-bem-modules/releases/tag/v0.1.0)に添付したパッケージのtarballからインストールしてください。npm registryにはまだ公開していません。GitHubが自動生成するソースコードのアーカイブではなく、添付された`.tgz`を使います。
+
 ```sh
-pnpm add -D vite-plugin-bem-modules
+pnpm add -D https://github.com/minoshintaro/vite-plugin-bem-modules/releases/download/v0.1.0/vite-plugin-bem-modules-0.1.0.tgz
 # または
-npm install -D vite-plugin-bem-modules
+npm install -D https://github.com/minoshintaro/vite-plugin-bem-modules/releases/download/v0.1.0/vite-plugin-bem-modules-0.1.0.tgz
 ```
 
 ## クイックスタート
@@ -310,6 +312,8 @@ pnpm bem:sync
 CLIは対象範囲のCSS Moduleを1回のViteビルドで処理します。ビルド結果は書き出さず、SCSSの展開、エイリアス、`additionalData`、独自のimporter、PostCSSの実行順にはViteの設定を使います。`.module.scss`を検査する環境には、Viteが利用できるSass実装（`sass-embedded`など）が必要です。
 
 CLIはViteの設定ファイルに登録済みのプラグインを使います。どちらかのプラグインが欠けている場合や、外部のPostCSS設定にだけ登録した場合は`BEM010`で停止します。CLIでは`--root`、繰り返し指定できる`--include`と`--exclude`も利用できます。
+
+`project.include`と`project.exclude`は、ViteがimportしないModuleも含め、明示的な`check`と`sync`の対象ファイル・ディレクトリを指定します。パスはproject rootからの相対パスまたは絶対パスで、globは使えません。`include`省略時はroot全体、`include: []`は対象なしです。root外のimport済みファイルを含めるには絶対パスで明示します。この範囲は型宣言の掃除にも適用され、範囲外のファイルは変更しません。`node_modules`や`dist`などの依存・生成ディレクトリは既定で除外します。
 
 CLIはViteのビルド処理を使うため、ほかのプラグインのフックも実行します。それらの副作用が問題になる場合は、`--vite-config <path>`でCLI専用のVite設定を指定してください。
 

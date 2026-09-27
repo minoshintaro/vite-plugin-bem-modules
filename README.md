@@ -41,10 +41,12 @@ The plugin does not support `css.transformer: "lightningcss"` for CSS Modules. Y
 
 ## Install
 
+For now, install the package tarball attached to the [v0.1.0 GitHub Release](https://github.com/minoshintaro/vite-plugin-bem-modules/releases/tag/v0.1.0). The package is not distributed through the npm registry yet. Use the attached `.tgz`, not GitHub's automatically generated source archive.
+
 ```sh
-pnpm add -D vite-plugin-bem-modules
+pnpm add -D https://github.com/minoshintaro/vite-plugin-bem-modules/releases/download/v0.1.0/vite-plugin-bem-modules-0.1.0.tgz
 # or
-npm install -D vite-plugin-bem-modules
+npm install -D https://github.com/minoshintaro/vite-plugin-bem-modules/releases/download/v0.1.0/vite-plugin-bem-modules-0.1.0.tgz
 ```
 
 ## Quick start
@@ -310,6 +312,8 @@ Declarations are inputs to type checking. After changing CSS Modules or options 
 The CLI processes the scoped CSS Modules in one Vite build without writing build output. It uses Vite's configuration for SCSS compilation, aliases, `additionalData`, custom importers, and PostCSS order. An environment that checks `.module.scss` files needs a Sass implementation supported by Vite, such as `sass-embedded`.
 
 The CLI uses the plugins already registered in Vite config. If either plugin is missing, or the PostCSS plugin is registered only in an external PostCSS config, it stops with `BEM010`. The CLI also accepts `--root` and repeatable `--include` and `--exclude` options.
+
+`project.include` and `project.exclude` select files and directories for explicit `check` and `sync`, including Modules that Vite does not import. Paths are relative to the project root or absolute; glob patterns are not supported. Omitting `include` selects the root, while `include: []` selects nothing. An imported file outside the root needs an explicit absolute include. The scope also governs declaration cleanup; files outside it are left alone. Dependency and generated directories such as `node_modules` and `dist` are skipped by default.
 
 Because the CLI uses a Vite build, hooks from other Vite plugins also run. If their side effects are a problem, select a dedicated Vite config with `--vite-config <path>`.
 
